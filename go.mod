@@ -4,6 +4,7 @@ go 1.22.2
 
 require (
 	github.com/clerk/clerk-sdk-go/v2 v2.0.4
+	github.com/dev3mike/go-api-swagger-boilerplate v0.0.0-20240524143654-171770823ae9
 	github.com/dev3mike/go-xenv v1.0.6
 	github.com/uptrace/bun/dialect/pgdialect v1.2.1
 )
@@ -11,7 +12,7 @@ require (
 require (
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/swaggo/files v1.0.1 // indirect
-	golang.org/x/net v0.25.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	mellium.im/sasl v0.3.1 // indirect
 )
@@ -22,7 +23,7 @@ require (
 	github.com/dev3mike/go-xmapper v1.0.21
 	github.com/go-chi/chi v4.1.2+incompatible
 	github.com/go-chi/render v1.0.3
-	github.com/go-jose/go-jose/v3 v3.0.1 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/spec v0.21.0 // indirect
@@ -37,7 +38,7 @@ require (
 	github.com/uptrace/bun/driver/pgdriver v1.2.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	golang.org/x/crypto v0.23.0 // indirect
-	golang.org/x/sys v0.20.0 // indirect
+	golang.org/x/crypto v0.31.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/tools v0.21.0 // indirect
 )
