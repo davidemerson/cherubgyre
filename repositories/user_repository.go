@@ -9,7 +9,7 @@ import (
 )
 
 func SaveUser(registerDTO dtos.RegisterDTO) error {
-	file, err := os.OpenFile("users.json", os.O_RDWR, 0644)
+	file, err := os.OpenFile("users.json", os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		log.Printf("Error opening file: %v", err)
 		return err
@@ -58,7 +58,7 @@ func SaveUser(registerDTO dtos.RegisterDTO) error {
 }
 
 func GetUserByID(username string) (dtos.RegisterDTO, error) {
-	file, err := os.Open("users.json")
+	file, err := os.OpenFile("users.json", os.O_RDONLY|os.O_CREATE, 0644)
 	if err != nil {
 		log.Printf("Error opening file: %v", err)
 		return dtos.RegisterDTO{}, err
@@ -94,7 +94,7 @@ func ValidateUserCredentials(username, pin string) (bool, error) {
 }
 
 func UpdateUser(updatedUser dtos.RegisterDTO) error {
-	file, err := os.OpenFile("users.json", os.O_RDWR, 0644)
+	file, err := os.OpenFile("users.json", os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		log.Printf("Error opening file: %v", err)
 		return err

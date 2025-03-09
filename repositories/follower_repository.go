@@ -14,7 +14,7 @@ type FollowerRelation struct {
 
 func AddFollower(followerID, followedID string) error {
 	log.Printf("Adding follower: %s to user: %s", followerID, followedID)
-	file, err := os.OpenFile("followers.json", os.O_RDWR, 0644)
+	file, err := os.OpenFile("followers.json", os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		log.Printf("Error opening file: %v", err)
 		return err
@@ -50,7 +50,7 @@ func AddFollower(followerID, followedID string) error {
 
 func RemoveFollower(followerID, followedID string) error {
 	log.Printf("Removing follower: %s from user: %s", followerID, followedID)
-	file, err := os.OpenFile("followers.json", os.O_RDWR, 0644)
+	file, err := os.OpenFile("followers.json", os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		log.Printf("Error opening file: %v", err)
 		return err
@@ -84,7 +84,7 @@ func RemoveFollower(followerID, followedID string) error {
 
 func GetFollowers(userID string) ([]string, error) {
 	log.Printf("Getting followers for user: %s", userID)
-	file, err := os.Open("followers.json")
+	file, err := os.OpenFile("followers.json", os.O_RDONLY|os.O_CREATE, 0644)
 	if err != nil {
 		log.Printf("Error opening file: %v", err)
 		return nil, err
@@ -110,7 +110,7 @@ func GetFollowers(userID string) ([]string, error) {
 
 func BanFollower(followerID, followedID string) error {
 	log.Printf("Banning follower: %s from user: %s", followerID, followedID)
-	file, err := os.OpenFile("followers.json", os.O_RDWR, 0644)
+	file, err := os.OpenFile("followers.json", os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		log.Printf("Error opening file: %v", err)
 		return err
