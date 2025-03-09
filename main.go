@@ -11,9 +11,11 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
+	if os.Getenv("ENV") != "production" {
+		err := godotenv.Load()
+		if err != nil {
+			log.Println("Warning: No .env file found, relying on Heroku environment variables")
+		}
 	}
 
 	router := mux.NewRouter()
@@ -26,13 +28,6 @@ func main() {
 	router.HandleFunc("/unfollow/{username}", controllers.UnfollowUser).Methods("POST")
 	router.HandleFunc("/followers/{username}", controllers.GetFollowers).Methods("GET")
 	router.HandleFunc("/followers/{username}", controllers.BanFollower).Methods("DELETE")
-
-	if os.Getenv("ENV") != "production" {
-		err := godotenv.Load()
-		if err != nil {
-			log.Println("Warning: No .env file found, relying on Heroku environment variables")
-		}
-	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
