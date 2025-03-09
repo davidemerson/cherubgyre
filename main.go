@@ -27,6 +27,13 @@ func main() {
 	router.HandleFunc("/followers/{username}", controllers.GetFollowers).Methods("GET")
 	router.HandleFunc("/followers/{username}", controllers.BanFollower).Methods("DELETE")
 
+	if os.Getenv("ENV") != "production" {
+		err := godotenv.Load()
+		if err != nil {
+			log.Println("Warning: No .env file found, relying on Heroku environment variables")
+		}
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080" // Default to port 8080 if PORT is not set
