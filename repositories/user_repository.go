@@ -17,7 +17,7 @@ func SaveUser(registerDTO dtos.RegisterDTO) error {
 	defer file.Close()
 
 	var users []dtos.RegisterDTO
-	if err := json.NewDecoder(file).Decode(&users); err != nil {
+	if err := json.NewDecoder(file).Decode(&users); err != nil && err.Error() != "EOF" {
 		log.Printf("Error decoding user data: %v", err)
 		return err
 	}
@@ -66,7 +66,7 @@ func GetUserByID(username string) (dtos.RegisterDTO, error) {
 	defer file.Close()
 
 	var users []dtos.RegisterDTO
-	if err := json.NewDecoder(file).Decode(&users); err != nil {
+	if err := json.NewDecoder(file).Decode(&users); err != nil && err.Error() != "EOF" {
 		log.Printf("Error decoding user data: %v", err)
 		return dtos.RegisterDTO{}, err
 	}
@@ -102,7 +102,7 @@ func UpdateUser(updatedUser dtos.RegisterDTO) error {
 	defer file.Close()
 
 	var users []dtos.RegisterDTO
-	if err := json.NewDecoder(file).Decode(&users); err != nil {
+	if err := json.NewDecoder(file).Decode(&users); err != nil && err.Error() != "EOF" {
 		log.Printf("Error decoding user data: %v", err)
 		return err
 	}

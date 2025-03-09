@@ -22,7 +22,7 @@ func AddFollower(followerID, followedID string) error {
 	defer file.Close()
 
 	var relations []FollowerRelation
-	if err := json.NewDecoder(file).Decode(&relations); err != nil {
+	if err := json.NewDecoder(file).Decode(&relations); err != nil && err.Error() != "EOF" {
 		log.Printf("Error decoding follower data: %v", err)
 		return err
 	}
@@ -58,7 +58,7 @@ func RemoveFollower(followerID, followedID string) error {
 	defer file.Close()
 
 	var relations []FollowerRelation
-	if err := json.NewDecoder(file).Decode(&relations); err != nil {
+	if err := json.NewDecoder(file).Decode(&relations); err != nil && err.Error() != "EOF" {
 		log.Printf("Error decoding follower data: %v", err)
 		return err
 	}
@@ -92,7 +92,7 @@ func GetFollowers(userID string) ([]string, error) {
 	defer file.Close()
 
 	var relations []FollowerRelation
-	if err := json.NewDecoder(file).Decode(&relations); err != nil {
+	if err := json.NewDecoder(file).Decode(&relations); err != nil && err.Error() != "EOF" {
 		log.Printf("Error decoding follower data: %v", err)
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func BanFollower(followerID, followedID string) error {
 	defer file.Close()
 
 	var relations []FollowerRelation
-	if err := json.NewDecoder(file).Decode(&relations); err != nil {
+	if err := json.NewDecoder(file).Decode(&relations); err != nil && err.Error() != "EOF" {
 		log.Printf("Error decoding follower data: %v", err)
 		return err
 	}
