@@ -12,6 +12,9 @@ import (
 func main() {
 
 	router := mux.NewRouter()
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("You've reached cherubgyre"))
+	}).Methods("GET")
 	router.HandleFunc("/register", controllers.Register).Methods("POST")
 	router.HandleFunc("/health", controllers.Health).Methods("GET")
 	router.HandleFunc("/login", controllers.Login).Methods("POST")
