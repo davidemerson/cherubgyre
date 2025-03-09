@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"cherubgyre/dtos"
-	"cherubgyre/service"
+	"cherubgyre/services"
 	"encoding/json"
 	"net/http"
 )
@@ -15,7 +15,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, err := service.Login(request)
+	response, err := services.Login(request)
 	if err != nil {
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
@@ -31,7 +31,7 @@ func Profile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	valid, err := service.ValidateToken(token)
+	valid, err := services.ValidateToken(token)
 	if err != nil || !valid {
 		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return

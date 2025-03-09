@@ -1,4 +1,4 @@
-package service
+package services
 
 import (
 	"cherubgyre/dtos"
@@ -73,4 +73,21 @@ func ValidateToken(tokenStr string) (bool, error) {
 
 	log.Println("Token is valid for user:", claims.UserID)
 	return true, nil
+}
+
+func GetUsernameFromToken(tokenStr string) (string, error) {
+	if strings.HasPrefix(strings.ToLower(tokenStr), "bearer ") {
+		tokenStr = tokenStr[7:]
+	}
+
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil
+	})
+
+	if err != nil || !token.Valid {
+		return "", errors.New("invalid token")
+	}
+
+	return claims.UserID, nil
 }

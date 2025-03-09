@@ -29,6 +29,20 @@ func SaveUser(registerDTO dtos.RegisterDTO) error {
 		}
 	}
 
+	// Check if invite_code is valid
+	if registerDTO.InviteCode != "" {
+		validInviteCode := false
+		for _, user := range users {
+			if user.UserInviteCode == registerDTO.InviteCode {
+				validInviteCode = true
+				break
+			}
+		}
+		if !validInviteCode {
+			return errors.New("invite code is not valid")
+		}
+	}
+
 	users = append(users, registerDTO)
 
 	file.Seek(0, 0)
@@ -77,4 +91,37 @@ func ValidateUserCredentials(username, pin string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func UpdateUser(updatedUser dtos.RegisterDTO) error {
+	file, err := os.OpenFile("users.json", os.O_RDWR, 0644)
+	if err != nil {
+		log.Printf("Error opening file: %v", err)
+		return err
+	}
+	defer file.Close()
+
+	var users []dtos.RegisterDTO
+	if err := json.NewDecoder(file).Decode(&users); err != nil {
+		log.Printf("Error decoding user data: %v", err)
+		return err
+	}
+
+	for i, user := range users {
+		if user.Username == updatedUser.Username {
+			users[i] = updatedUser
+			break
+		}
+	}
+
+	file.Seek(0, 0)
+	file.Truncate(0)
+
+	if err := json.NewEncoder(file).Encode(users); err != nil {
+		log.Printf("Error encoding user data: %v", err)
+		return err
+	}
+
+	log.Printf("User data updated in file: %+v", updatedUser)
+	return nil
 }
