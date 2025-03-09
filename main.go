@@ -7,16 +7,9 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
-	"github.com/joho/godotenv"
 )
 
 func main() {
-	if os.Getenv("ENV") != "production" {
-		err := godotenv.Load()
-		if err != nil {
-			log.Println("Warning: No .env file found, relying on Heroku environment variables")
-		}
-	}
 
 	router := mux.NewRouter()
 	router.HandleFunc("/register", controllers.Register).Methods("POST")
@@ -29,6 +22,7 @@ func main() {
 	router.HandleFunc("/followers/{username}", controllers.GetFollowers).Methods("GET")
 	router.HandleFunc("/followers/{username}", controllers.BanFollower).Methods("DELETE")
 
+	log.Print("Attempting app start")
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080" // Default to port 8080 if PORT is not set
