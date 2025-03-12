@@ -24,6 +24,9 @@ func main() {
 	router.HandleFunc("/unfollow/{username}", controllers.UnfollowUser).Methods("POST")
 	router.HandleFunc("/followers/{username}", controllers.GetFollowers).Methods("GET")
 	router.HandleFunc("/followers/{username}", controllers.BanFollower).Methods("DELETE")
+	router.HandleFunc("/duress", controllers.PostDuress).Methods("POST")
+	router.HandleFunc("/duress/cancel", controllers.CancelDuress).Methods("POST")
+	router.HandleFunc("/users/map", controllers.GetDuressMap).Methods("GET")
 
 	log.Print("Attempting app start")
 	port := os.Getenv("PORT")
