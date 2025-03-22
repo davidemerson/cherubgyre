@@ -11,14 +11,17 @@ RUN go mod download
 # Copy the rest of the application source code
 COPY . .
 
-# Build the Go application
-RUN GOOS=linux GOARCH=amd64 go build -o main main.go
+# Cross-compile for Linux (from Mac)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o main main.go
 
-# Use a lightweight base image for production
-FROM debian:bullseye
+# Use Ubuntu 22.04 LTS as the base image for production
+FROM ubuntu:22.04 
 
 # Set working directory
 WORKDIR /root/
+
+# Install necessary dependencies (if needed)
+RUN apt update && apt install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Copy the built binary from the builder stage
 COPY --from=builder /app/main .
@@ -31,5 +34,3 @@ ENV PORT=8080
 
 # Run the binary
 CMD ["./main"]
-
-
