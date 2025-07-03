@@ -53,9 +53,14 @@ func generateUsername() (string, error) {
 
 func RegisterUser(registerDTO dtos.RegisterDTO) (string, dtos.RegisterDTO, error) {
 	// Username is no longer expected from the DTO input for validation here
-	if registerDTO.NormalPin == "" || registerDTO.DuressPin == "" {
-		log.Println("Validation failed: normal_pin and duress_pin are required")
-		return "", dtos.RegisterDTO{}, errors.New("normal_pin & duress_pin are required")
+	if registerDTO.NormalPin == "" || registerDTO.DuressPin == "" || registerDTO.InviteCode == "" {
+		log.Println("Validation failed: normal_pin, duress_pin, and invite_code are required")
+		return "", dtos.RegisterDTO{}, errors.New("normal_pin, duress_pin, and invite_code are required")
+	}
+
+	if registerDTO.DuressPin == registerDTO.NormalPin {
+		log.Println("Validation failed: duress_pin and normal_pin cannot be the same")
+		return "", dtos.RegisterDTO{}, errors.New("duress_pin and normal_pin cannot be the same")
 	}
 
 	var username string
