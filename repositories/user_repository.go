@@ -33,12 +33,20 @@ func SaveUser(registerDTO dtos.RegisterDTO) error {
 	// Check if invite_code is valid
 	if registerDTO.InviteCode != "" {
 		validInviteCode := false
-		for _, user := range users {
-			if user.UserInviteCode == registerDTO.InviteCode {
-				validInviteCode = true
-				break
+
+		// Check hardcoded invite code first
+		if registerDTO.InviteCode == "4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2" {
+			validInviteCode = true
+		} else {
+			// Check against existing users' invite codes
+			for _, user := range users {
+				if user.UserInviteCode == registerDTO.InviteCode {
+					validInviteCode = true
+					break
+				}
 			}
 		}
+
 		if !validInviteCode {
 			return errors.New("invite code is not valid")
 		}
