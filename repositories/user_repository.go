@@ -172,3 +172,42 @@ func IsUsernameTaken(username string) (bool, error) {
 
 	return false, nil // Username is not taken
 }
+
+func ValidateInviteCode(inviteCode string) (bool, error) {
+	// Check hardcoded invite code first
+	if inviteCode == "4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2" {
+		return true, nil
+	}
+
+	file, err := os.OpenFile("users.json", os.O_RDONLY|os.O_CREATE, 0644)
+	if err != nil {
+		log.Printf("Error opening file for invite code validation: %v", err)
+		return false, err
+	}
+	defer file.Close()
+
+	var users []dtos.RegisterDTO
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&users)
+	if err != nil {
+		fileInfo, statErr := file.Stat()
+		if statErr == nil && fileInfo.Size() == 0 && errors.Is(err, io.EOF) {
+			return false, nil // Empty file, no valid invite codes
+		}
+		if errors.Is(err, io.EOF) && len(users) == 0 {
+			return false, nil
+		}
+		log.Printf("Error decoding user data for invite code validation: %v", err)
+		return false, err
+	}
+
+	for _, user := range users {
+		log.Printf("User invite code: %s", user.UserInviteCode)
+		log.Printf("user name: %s", user.Username)
+		if user.UserInviteCode == inviteCode {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
