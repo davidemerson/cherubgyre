@@ -30,5 +30,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		"message": message,
 		"user":    user,
 	}
-	json.NewEncoder(w).Encode(response)
+	encoder := json.NewEncoder(w)
+	encoder.SetEscapeHTML(false)
+	encoder.Encode(response)
 }

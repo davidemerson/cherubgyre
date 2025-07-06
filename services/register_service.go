@@ -85,6 +85,8 @@ func RegisterUser(registerDTO dtos.RegisterDTO) (string, dtos.RegisterDTO, error
 		log.Printf("Username '%s' is already taken. Generating a new one.", username)
 	}
 
+	registerDTO.Avatar = "https://api.dicebear.com/7.x/identicon/svg?seed=" + username + "&rowColor=000000"
+
 	registerDTO.Username = username // Set the generated username in the DTO
 
 	err = repositories.SaveUser(registerDTO) // Pass the DTO with the username

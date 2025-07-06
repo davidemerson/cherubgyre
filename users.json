@@ -1,9 +1,1 @@
-[
-    {
-        "normal_pin": "1234",
-        "duress_pin": "1235",
-        "username": "qay_271",
-        "invite_code": "cf3c9ba0-f44b-4394-bc35-e21be456a757",
-        "user_invite_code": "4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2"
-    }
-]
+[{"normal_pin":"1234","duress_pin":"1235","username":"qay_271","invite_code":"cf3c9ba0-f44b-4394-bc35-e21be456a757"},{"normal_pin":"1234","duress_pin":"1235","username":"fxh_239","invite_code":"4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2","avatar":"https://api.dicebear.com/7.x/identicon/svg?seed=fxh_239\u0026rowColor=000000"},{"normal_pin":"1234","duress_pin":"1235","username":"nng_175","invite_code":"4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2","avatar":"https://api.dicebear.com/7.x/identicon/svg?seed=nng_175\u0026rowColor=000000"},{"normal_pin":"1234","duress_pin":"1235","username":"dci_098","invite_code":"4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2","avatar":"https://api.dicebear.com/7.x/identicon/svg?seed=dci_098\u0026rowColor=000000"},{"normal_pin":"1234","duress_pin":"1235","username":"yke_635","invite_code":"4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2","avatar":"https://api.dicebear.com/7.x/identicon/svg?seed=yke_635\u0026rowColor=000000"}]

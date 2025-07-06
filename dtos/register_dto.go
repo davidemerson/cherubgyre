@@ -6,4 +6,5 @@ type RegisterDTO struct {
 	DuressPin      string `json:"duress_pin"`
 	Username       string `json:"username,omitempty"`
 	InviteCode     string `json:"invite_code"`
+	Avatar         string `json:"avatar,omitempty"`
 }
