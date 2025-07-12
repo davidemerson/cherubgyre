@@ -91,3 +91,8 @@ func GetUsernameFromToken(tokenStr string) (string, error) {
 
 	return claims.UserID, nil
 }
+
+// GetUserProfile returns user info for a given username
+func GetUserProfile(username string) (dtos.RegisterDTO, error) {
+	return repositories.GetUserByID(username)
+}
