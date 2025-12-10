@@ -24,6 +24,7 @@ func main() {
 	router.HandleFunc("/follow/{username}", controllers.FollowUser).Methods("POST")
 	router.HandleFunc("/unfollow/{username}", controllers.UnfollowUser).Methods("POST")
 	router.HandleFunc("/followers/{username}", controllers.GetFollowers).Methods("GET")
+	router.HandleFunc("/following", controllers.GetFollowing).Methods("GET")
 	router.HandleFunc("/followers/{username}", controllers.BanFollower).Methods("DELETE")
 	router.HandleFunc("/duress", controllers.PostDuress).Methods("POST")
 	router.HandleFunc("/duress/cancel", controllers.CancelDuress).Methods("POST")

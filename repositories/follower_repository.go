@@ -141,3 +141,29 @@ func BanFollower(followerID, followedID string) error {
 	log.Printf("Successfully banned follower: %s from user: %s", followerID, followedID)
 	return nil
 }
+
+func GetFollowing(userID string) ([]string, error) {
+	log.Printf("Getting following list for user: %s", userID)
+	file, err := os.OpenFile("followers.json", os.O_RDONLY|os.O_CREATE, 0644)
+	if err != nil {
+		log.Printf("Error opening file: %v", err)
+		return nil, err
+	}
+	defer file.Close()
+
+	var relations []FollowerRelation
+	if err := json.NewDecoder(file).Decode(&relations); err != nil && err.Error() != "EOF" {
+		log.Printf("Error decoding follower data: %v", err)
+		return nil, err
+	}
+
+	var following []string
+	for _, relation := range relations {
+		if relation.Follower == userID {
+			following = append(following, relation.Followed)
+		}
+	}
+
+	log.Printf("Successfully retrieved following list for user: %s", userID)
+	return following, nil
+}

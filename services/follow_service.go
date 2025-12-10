@@ -1,6 +1,7 @@
 package services
 
 import (
+	"cherubgyre/dtos"
 	"cherubgyre/repositories"
 	"errors"
 	"log"
@@ -50,11 +51,24 @@ func UnfollowUser(token, username string) error {
 	return nil
 }
 
-func GetFollowers(username string) ([]string, error) {
-	followers, err := repositories.GetFollowers(username)
+func GetFollowers(username string) ([]dtos.UserResponseDTO, error) {
+	followerUsernames, err := repositories.GetFollowers(username)
 	if err != nil {
 		log.Println("Error getting followers:", err)
 		return nil, err
+	}
+
+	var followers []dtos.UserResponseDTO
+	for _, followerUsername := range followerUsernames {
+		user, err := repositories.GetUserByID(followerUsername)
+		if err != nil {
+			log.Printf("Error getting user details for follower %s: %v", followerUsername, err)
+			continue
+		}
+		followers = append(followers, dtos.UserResponseDTO{
+			Username: user.Username,
+			Avatar:   user.Avatar,
+		})
 	}
 
 	return followers, nil
@@ -80,4 +94,39 @@ func BanFollower(token, username string) error {
 	}
 
 	return nil
+}
+
+func GetFollowing(token string) ([]dtos.UserResponseDTO, error) {
+	valid, err := ValidateToken(token)
+	if err != nil || !valid {
+		log.Println("Invalid token:", token)
+		return nil, errors.New("invalid token")
+	}
+
+	username, err := GetUsernameFromToken(token)
+	if err != nil {
+		log.Println("Error getting username from token:", err)
+		return nil, err
+	}
+
+	followingUsernames, err := repositories.GetFollowing(username)
+	if err != nil {
+		log.Println("Error getting following list:", err)
+		return nil, err
+	}
+
+	var following []dtos.UserResponseDTO
+	for _, followingUsername := range followingUsernames {
+		user, err := repositories.GetUserByID(followingUsername)
+		if err != nil {
+			log.Printf("Error getting user details for following %s: %v", followingUsername, err)
+			continue
+		}
+		following = append(following, dtos.UserResponseDTO{
+			Username: user.Username,
+			Avatar:   user.Avatar,
+		})
+	}
+
+	return following, nil
 }

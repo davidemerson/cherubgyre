@@ -74,3 +74,17 @@ func BanFollower(w http.ResponseWriter, r *http.Request) {
 	response := map[string]string{"message": "Follower banned successfully"}
 	json.NewEncoder(w).Encode(response)
 }
+
+func GetFollowing(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
+
+	following, err := services.GetFollowing(token)
+	if err != nil {
+		log.Printf("Error getting following list: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(following)
+}
