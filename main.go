@@ -21,7 +21,13 @@ func main() {
 	router.HandleFunc("/login", controllers.Login).Methods("POST")
 	router.HandleFunc("/profile", controllers.Profile).Methods("GET")
 	router.HandleFunc("/invite", controllers.Invite).Methods("GET")
+	
+	// Follow Request Routes
+	router.HandleFunc("/follow/requests", controllers.GetFollowRequests).Methods("GET")
+	router.HandleFunc("/follow/accept/{username}", controllers.AcceptFollow).Methods("POST")
+	router.HandleFunc("/follow/decline/{username}", controllers.DeclineFollow).Methods("POST")
 	router.HandleFunc("/follow/{username}", controllers.FollowUser).Methods("POST")
+	
 	router.HandleFunc("/unfollow/{username}", controllers.UnfollowUser).Methods("POST")
 	router.HandleFunc("/followers/{username}", controllers.GetFollowers).Methods("GET")
 	router.HandleFunc("/following", controllers.GetFollowing).Methods("GET")

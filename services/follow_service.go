@@ -20,9 +20,56 @@ func FollowUser(token, username string) error {
 		return err
 	}
 
-	err = repositories.AddFollower(followerUsername, username)
+	// Always creating a pending request now
+	err = repositories.AddFollower(followerUsername, username, "pending")
 	if err != nil {
-		log.Println("Error adding follower:", err)
+		log.Println("Error adding follow request:", err)
+		return err
+	}
+
+	return nil
+}
+
+func AcceptFollow(token, followerUsername string) error {
+	valid, err := ValidateToken(token)
+	if err != nil || !valid {
+		log.Println("Invalid token:", token)
+		return errors.New("invalid token")
+	}
+
+	currentUser, err := GetUsernameFromToken(token)
+	if err != nil {
+		log.Println("Error getting username from token:", err)
+		return err
+	}
+
+	// Current user is the one being followed, accepting the follower
+	err = repositories.AcceptFollower(followerUsername, currentUser)
+	if err != nil {
+		log.Println("Error accepting follower:", err)
+		return err
+	}
+
+	return nil
+}
+
+func DeclineFollow(token, followerUsername string) error {
+	valid, err := ValidateToken(token)
+	if err != nil || !valid {
+		log.Println("Invalid token:", token)
+		return errors.New("invalid token")
+	}
+
+	currentUser, err := GetUsernameFromToken(token)
+	if err != nil {
+		log.Println("Error getting username from token:", err)
+		return err
+	}
+
+	// Current user declines the follower (removes the pending relationship)
+	err = repositories.RemoveFollower(followerUsername, currentUser)
+	if err != nil {
+		log.Println("Error declining follower:", err)
 		return err
 	}
 
@@ -49,6 +96,41 @@ func UnfollowUser(token, username string) error {
 	}
 
 	return nil
+}
+
+func GetFollowRequests(token string) ([]dtos.UserResponseDTO, error) {
+	valid, err := ValidateToken(token)
+	if err != nil || !valid {
+		log.Println("Invalid token:", token)
+		return nil, errors.New("invalid token")
+	}
+
+	username, err := GetUsernameFromToken(token)
+	if err != nil {
+		log.Println("Error getting username from token:", err)
+		return nil, err
+	}
+
+	requestUsernames, err := repositories.GetFollowRequests(username)
+	if err != nil {
+		log.Println("Error getting follow requests:", err)
+		return nil, err
+	}
+
+	var requests []dtos.UserResponseDTO
+	for _, reqUsername := range requestUsernames {
+		user, err := repositories.GetUserByID(reqUsername)
+		if err != nil {
+			log.Printf("Error getting user details for request %s: %v", reqUsername, err)
+			continue
+		}
+		requests = append(requests, dtos.UserResponseDTO{
+			Username: user.Username,
+			Avatar:   user.Avatar,
+		})
+	}
+
+	return requests, nil
 }
 
 func GetFollowers(username string) ([]dtos.UserResponseDTO, error) {
