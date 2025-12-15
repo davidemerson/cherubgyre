@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func PostDuress(token, duressType, message string, timestamp time.Time, additionalData map[string]interface{}) error {
+func PostDuress(token, duressType, message string, timestamp time.Time, additionalData map[string]interface{}, duressPin string) error {
 	valid, err := ValidateToken(token)
 	if err != nil || !valid {
 		log.Println("Invalid token:", token)
@@ -18,6 +18,17 @@ func PostDuress(token, duressType, message string, timestamp time.Time, addition
 	if err != nil {
 		log.Println("Error getting username from token:", err)
 		return err
+	}
+
+	user, err := repositories.GetUserByID(username)
+	if err != nil {
+		log.Println("Error getting user by ID:", err)
+		return err
+	}
+
+	if user.DuressPin != duressPin {
+		log.Println("Invalid duress pin for user:", username)
+		return errors.New("invalid credentials")
 	}
 
 	err = repositories.SaveDuress(username, duressType, message, timestamp, additionalData)

@@ -22,8 +22,56 @@ func FollowUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "User followed successfully"}
+	response := map[string]string{"message": "Follow request sent successfully"}
 	json.NewEncoder(w).Encode(response)
+}
+
+func AcceptFollow(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
+	vars := mux.Vars(r)
+	username := vars["username"]
+
+	err := services.AcceptFollow(token, username)
+	if err != nil {
+		log.Printf("Error accepting follower: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	response := map[string]string{"message": "Follower accepted successfully"}
+	json.NewEncoder(w).Encode(response)
+}
+
+func DeclineFollow(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
+	vars := mux.Vars(r)
+	username := vars["username"]
+
+	err := services.DeclineFollow(token, username)
+	if err != nil {
+		log.Printf("Error declining follower: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	response := map[string]string{"message": "Follow request declined successfully"}
+	json.NewEncoder(w).Encode(response)
+}
+
+func GetFollowRequests(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
+
+	requests, err := services.GetFollowRequests(token)
+	if err != nil {
+		log.Printf("Error getting follow requests: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(requests)
 }
 
 func UnfollowUser(w http.ResponseWriter, r *http.Request) {
@@ -73,4 +121,18 @@ func BanFollower(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	response := map[string]string{"message": "Follower banned successfully"}
 	json.NewEncoder(w).Encode(response)
+}
+
+func GetFollowing(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
+
+	following, err := services.GetFollowing(token)
+	if err != nil {
+		log.Printf("Error getting following list: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(following)
 }

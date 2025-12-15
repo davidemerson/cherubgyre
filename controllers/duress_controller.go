@@ -13,6 +13,7 @@ type DuressRequest struct {
 	Message        string                 `json:"message"`
 	Timestamp      time.Time              `json:"timestamp"`
 	AdditionalData map[string]interface{} `json:"additional_data"`
+	DuressPin      string                 `json:"duress_pin"`
 }
 
 func PostDuress(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +25,7 @@ func PostDuress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := services.PostDuress(token, duressRequest.DuressType, duressRequest.Message, duressRequest.Timestamp, duressRequest.AdditionalData)
+	err := services.PostDuress(token, duressRequest.DuressType, duressRequest.Message, duressRequest.Timestamp, duressRequest.AdditionalData, duressRequest.DuressPin)
 	if err != nil {
 		log.Printf("Error posting duress: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
