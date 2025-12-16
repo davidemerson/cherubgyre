@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# Pre-commit hook to build the Go project before committing
+echo "Building project before commit..."
+
+GOOS=linux GOARCH=amd64 go build -o main main.go
+
+if [ $? -ne 0 ]; then
+    echo "❌ Build failed! Commit aborted."
+    exit 1
+fi
+
+echo "✅ Build successful!"
+exit 0
+
