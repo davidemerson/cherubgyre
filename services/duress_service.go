@@ -83,3 +83,31 @@ func GetDuressMap(token string) (map[string]interface{}, error) {
 
 	return duressMap, nil
 }
+
+func GetFollowingDuress(token string) ([]repositories.Duress, error) {
+	valid, err := ValidateToken(token)
+	if err != nil || !valid {
+		log.Println("Invalid token:", token)
+		return nil, errors.New("invalid token")
+	}
+
+	username, err := GetUsernameFromToken(token)
+	if err != nil {
+		log.Println("Error getting username from token:", err)
+		return nil, err
+	}
+
+	following, err := repositories.GetFollowing(username)
+	if err != nil {
+		log.Println("Error getting following list:", err)
+		return nil, err
+	}
+
+	activeDuresses, err := repositories.GetActiveDuressForUsers(following)
+	if err != nil {
+		log.Println("Error getting active duresses:", err)
+		return nil, err
+	}
+
+	return activeDuresses, nil
+}

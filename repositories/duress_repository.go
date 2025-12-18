@@ -109,3 +109,38 @@ func GetDuressMap(username string) (map[string]interface{}, error) {
 	log.Printf("Successfully retrieved duress map for user: %s", username)
 	return duressMap, nil
 }
+
+func GetActiveDuressForUsers(usernames []string) ([]Duress, error) {
+	log.Printf("Getting active duress for users: %v", usernames)
+	file, err := os.OpenFile("duress.json", os.O_RDONLY|os.O_CREATE, 0644)
+	if err != nil {
+		log.Printf("Error opening file: %v", err)
+		return nil, err
+	}
+	defer file.Close()
+
+	var duresses []Duress
+	if err := json.NewDecoder(file).Decode(&duresses); err != nil && err.Error() != "EOF" {
+		log.Printf("Error decoding duress data: %v", err)
+		return nil, err
+	}
+
+	var activeDuresses []Duress
+	for _, duress := range duresses {
+		if contains(usernames, duress.Username) {
+			activeDuresses = append(activeDuresses, duress)
+		}
+	}
+
+	log.Printf("Successfully retrieved %d active duress signals", len(activeDuresses))
+	return activeDuresses, nil
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}

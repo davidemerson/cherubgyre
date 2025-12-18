@@ -65,3 +65,17 @@ func GetDuressMap(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(duressMap)
 }
+
+func GetFollowingDuress(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
+
+	duresses, err := services.GetFollowingDuress(token)
+	if err != nil {
+		log.Printf("Error getting following duress: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(duresses)
+}

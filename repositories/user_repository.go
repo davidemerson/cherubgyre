@@ -33,10 +33,12 @@ func SaveUser(registerDTO dtos.RegisterDTO) error {
 	// Check if invite_code is valid
 	if registerDTO.InviteCode != "" {
 		validInviteCode := false
+		isMasterCode := false
 
 		// Check hardcoded invite code first
 		if registerDTO.InviteCode == "4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2" {
 			validInviteCode = true
+			isMasterCode = true
 		} else {
 			// Check against existing users' invite codes
 			for _, user := range users {
@@ -49,6 +51,27 @@ func SaveUser(registerDTO dtos.RegisterDTO) error {
 
 		if !validInviteCode {
 			return errors.New("invite code is not valid")
+		}
+
+		// Check if code has been used (skip for master code)
+		if !isMasterCode {
+			used, err := IsInviteCodeUsed(registerDTO.InviteCode)
+			if err != nil {
+				log.Printf("Error checking if invite code is used: %v", err)
+				return err
+			}
+			if used {
+				return errors.New("invite code has already been used")
+			}
+		}
+
+		// Mark the code as used (skip for master code)
+		if !isMasterCode {
+			err := MarkInviteCodeAsUsed(registerDTO.InviteCode)
+			if err != nil {
+				log.Printf("Error marking invite code as used: %v", err)
+				return err
+			}
 		}
 	}
 
@@ -174,7 +197,7 @@ func IsUsernameTaken(username string) (bool, error) {
 }
 
 func ValidateInviteCode(inviteCode string) (bool, error) {
-	// Check hardcoded invite code first
+	// Check hardcoded invite code first (master code is always valid and unlimited)
 	if inviteCode == "4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2" {
 		return true, nil
 	}
@@ -201,13 +224,95 @@ func ValidateInviteCode(inviteCode string) (bool, error) {
 		return false, err
 	}
 
+	codeExists := false
 	for _, user := range users {
 		log.Printf("User invite code: %s", user.UserInviteCode)
 		log.Printf("user name: %s", user.Username)
 		if user.UserInviteCode == inviteCode {
+			codeExists = true
+			break
+		}
+	}
+
+	if !codeExists {
+		return false, nil
+	}
+
+	// Check if the code has been used
+	used, err := IsInviteCodeUsed(inviteCode)
+	if err != nil {
+		log.Printf("Error checking if invite code is used: %v", err)
+		return false, err
+	}
+
+	if used {
+		return false, nil // Code exists but has been used
+	}
+
+	return true, nil
+}
+
+// IsInviteCodeUsed checks if an invite code has already been used
+func IsInviteCodeUsed(inviteCode string) (bool, error) {
+	file, err := os.OpenFile("used_invite_codes.json", os.O_RDONLY|os.O_CREATE, 0644)
+	if err != nil {
+		log.Printf("Error opening used invite codes file: %v", err)
+		return false, err
+	}
+	defer file.Close()
+
+	var usedCodes []string
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&usedCodes)
+	if err != nil {
+		fileInfo, statErr := file.Stat()
+		if statErr == nil && fileInfo.Size() == 0 && errors.Is(err, io.EOF) {
+			return false, nil // Empty file, no used codes
+		}
+		if errors.Is(err, io.EOF) && len(usedCodes) == 0 {
+			return false, nil
+		}
+		log.Printf("Error decoding used invite codes: %v", err)
+		return false, err
+	}
+
+	for _, code := range usedCodes {
+		if code == inviteCode {
 			return true, nil
 		}
 	}
 
 	return false, nil
 }
+
+// MarkInviteCodeAsUsed adds an invite code to the used list
+func MarkInviteCodeAsUsed(inviteCode string) error {
+	file, err := os.OpenFile("used_invite_codes.json", os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		log.Printf("Error opening used invite codes file: %v", err)
+		return err
+	}
+	defer file.Close()
+
+	var usedCodes []string
+	if err := json.NewDecoder(file).Decode(&usedCodes); err != nil && err.Error() != "EOF" {
+		log.Printf("Error decoding used invite codes: %v", err)
+		return err
+	}
+
+	// Add the code to the list
+	usedCodes = append(usedCodes, inviteCode)
+
+	// Write back to file
+	file.Seek(0, 0)
+	file.Truncate(0)
+
+	if err := json.NewEncoder(file).Encode(usedCodes); err != nil {
+		log.Printf("Error encoding used invite codes: %v", err)
+		return err
+	}
+
+	log.Printf("Invite code marked as used: %s", inviteCode)
+	return nil
+}
+
