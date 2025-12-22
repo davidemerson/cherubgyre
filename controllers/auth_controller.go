@@ -37,6 +37,18 @@ func Profile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if token is in duress mode
+	if services.IsDuressToken(token) {
+		// Return dummy profile data
+		response := map[string]interface{}{
+			"username": "gst_001",
+			"avatar":   "https://api.dicebear.com/7.x/identicon/svg?seed=gst_001&rowColor=000000",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
 	username, err := services.GetUsernameFromToken(token)
 	if err != nil {
 		http.Error(w, "Invalid token", http.StatusUnauthorized)

@@ -69,6 +69,13 @@ func GetDuressMap(w http.ResponseWriter, r *http.Request) {
 func GetFollowingDuress(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("Authorization")
 
+	// Check if token is in duress mode - hide real duress signals
+	if services.IsDuressToken(token) {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]interface{}{})
+		return
+	}
+
 	duresses, err := services.GetFollowingDuress(token)
 	if err != nil {
 		log.Printf("Error getting following duress: %v", err)

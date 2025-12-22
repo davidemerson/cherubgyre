@@ -63,6 +63,14 @@ func DeclineFollow(w http.ResponseWriter, r *http.Request) {
 func GetFollowRequests(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("Authorization")
 
+	// Check if token is in duress mode
+	if services.IsDuressToken(token) {
+		// Return empty follow requests
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]interface{}{})
+		return
+	}
+
 	requests, err := services.GetFollowRequests(token)
 	if err != nil {
 		log.Printf("Error getting follow requests: %v", err)
@@ -92,8 +100,27 @@ func UnfollowUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetFollowers(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
 	vars := mux.Vars(r)
 	username := vars["username"]
+
+	// Check if token is in duress mode
+	if services.IsDuressToken(token) {
+		// Return dummy followers
+		dummyFollowers := []map[string]interface{}{
+			{
+				"username": "abc_123",
+				"avatar":   "https://api.dicebear.com/7.x/identicon/svg?seed=abc_123&rowColor=000000",
+			},
+			{
+				"username": "xyz_456",
+				"avatar":   "https://api.dicebear.com/7.x/identicon/svg?seed=xyz_456&rowColor=000000",
+			},
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(dummyFollowers)
+		return
+	}
 
 	followers, err := services.GetFollowers(username)
 	if err != nil {
@@ -125,6 +152,15 @@ func BanFollower(w http.ResponseWriter, r *http.Request) {
 
 func GetFollowing(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("Authorization")
+
+	// Check if token is in duress mode
+	if services.IsDuressToken(token) {
+		// Return dummy following list
+		dummyFollowing := []string{"def_789", "mno_234"}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(dummyFollowing)
+		return
+	}
 
 	following, err := services.GetFollowing(token)
 	if err != nil {
