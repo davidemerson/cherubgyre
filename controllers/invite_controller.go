@@ -13,6 +13,17 @@ func Invite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if token is in duress mode
+	if services.IsDuressToken(token) {
+		// Return dummy invite code
+		response := map[string]interface{}{
+			"message":    "Invite code created successfully",
+			"inviteCode": "DUMMY-INVITE-CODE-000",
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
 	inviteCode, err := services.CreateInvite(token)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

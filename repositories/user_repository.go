@@ -112,17 +112,23 @@ func GetUserByID(username string) (dtos.RegisterDTO, error) {
 	return dtos.RegisterDTO{}, errors.New("user not found")
 }
 
-func ValidateUserCredentials(username, pin string) (bool, error) {
+// ValidateUserCredentials checks if the provided PIN matches either the Normal or Duress PIN
+// Returns: 0 = no match, 1 = Normal PIN match, 2 = Duress PIN match
+func ValidateUserCredentials(username, pin string) (int, error) {
 	user, err := GetUserByID(username)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 
-	if user.NormalPin != pin {
-		return false, errors.New("invalid credentials")
+	if user.NormalPin == pin {
+		return 1, nil // Normal PIN match
 	}
 
-	return true, nil
+	if user.DuressPin == pin {
+		return 2, nil // Duress PIN match
+	}
+
+	return 0, errors.New("invalid credentials")
 }
 
 func UpdateUser(updatedUser dtos.RegisterDTO) error {
