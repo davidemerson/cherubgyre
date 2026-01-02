@@ -111,3 +111,29 @@ func GetFollowingDuress(token string) ([]repositories.Duress, error) {
 
 	return activeDuresses, nil
 }
+
+func VerifyDuressPin(token, pin string) error {
+	valid, err := ValidateToken(token)
+	if err != nil || !valid {
+		log.Println("Invalid token:", token)
+		return errors.New("invalid token")
+	}
+
+	username, err := GetUsernameFromToken(token)
+	if err != nil {
+		log.Println("Error getting username from token:", err)
+		return err
+	}
+
+	pinType, err := repositories.ValidateUserCredentials(username, pin)
+	if err != nil {
+		log.Println("Error validating credentials:", err)
+		return err
+	}
+
+	if pinType != 2 {
+		return errors.New("invalid duress pin")
+	}
+
+	return nil
+}

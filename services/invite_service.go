@@ -4,6 +4,7 @@ import (
 	"cherubgyre/repositories"
 	"errors"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -27,6 +28,22 @@ func CreateInvite(token string) (string, error) {
 		log.Println("Error getting user by ID:", err)
 		return "", err
 	}
+
+	// Rate limiting logic
+	now := time.Now().Unix()
+	var validHistory []int64
+	for _, timestamp := range user.InviteGenerationHistory {
+		if now-timestamp < 3600 { // 3600 seconds = 1 hour
+			validHistory = append(validHistory, timestamp)
+		}
+	}
+
+	if len(validHistory) >= 3 {
+		return "", errors.New("rate limit exceeded: max 3 invites per hour")
+	}
+
+	validHistory = append(validHistory, now)
+	user.InviteGenerationHistory = validHistory
 
 	inviteCode := uuid.New().String()
 	user.UserInviteCode = inviteCode

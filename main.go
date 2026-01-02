@@ -37,6 +37,7 @@ func main() {
 	router.HandleFunc("/duress/cancel", controllers.CancelDuress).Methods("POST")
 	router.HandleFunc("/users/map", controllers.GetDuressMap).Methods("GET")
 	router.HandleFunc("/duress/following", controllers.GetFollowingDuress).Methods("GET")
+	router.HandleFunc("/duress/verify", controllers.VerifyAccess).Methods("POST")
 
 	log.Print("Attempting app start")
 	port := os.Getenv("PORT")

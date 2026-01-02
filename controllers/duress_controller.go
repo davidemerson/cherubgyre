@@ -86,3 +86,26 @@ func GetFollowingDuress(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(duresses)
 }
+
+func VerifyAccess(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
+	var request struct {
+		Pin string `json:"pin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("Error decoding verify access request: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err := services.VerifyDuressPin(token, request.Pin)
+	if err != nil {
+		log.Printf("Error verifying duress access: %v", err)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	response := map[string]string{"message": "Access granted"}
+	json.NewEncoder(w).Encode(response)
+}
