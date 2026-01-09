@@ -2,9 +2,11 @@ package main
 
 import (
 	"cherubgyre/controllers"
+	"cherubgyre/services"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -20,6 +22,8 @@ func main() {
 	router.HandleFunc("/health", controllers.Health).Methods("GET")
 	router.HandleFunc("/login", controllers.Login).Methods("POST")
 	router.HandleFunc("/profile", controllers.Profile).Methods("GET")
+	router.HandleFunc("/user/change-pin", controllers.ChangePin).Methods("POST")
+	router.HandleFunc("/user/change-duress-pin", controllers.ChangeDuressPin).Methods("POST")
 	router.HandleFunc("/invite", controllers.Invite).Methods("GET")
 	
 	// Follow Request Routes
@@ -38,6 +42,28 @@ func main() {
 	router.HandleFunc("/users/map", controllers.GetDuressMap).Methods("GET")
 	router.HandleFunc("/duress/following", controllers.GetFollowingDuress).Methods("GET")
 	router.HandleFunc("/duress/verify", controllers.VerifyAccess).Methods("POST")
+	router.HandleFunc("/duress/dismiss/{username}", controllers.DismissDuressNotification).Methods("POST")
+
+	// Admin Routes
+	router.HandleFunc("/admin/users/{username}", controllers.AdminDeregisterUser).Methods("DELETE")
+
+	// Start Background Jobs
+	go func() {
+		log.Println("Starting background inactivity checker...")
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		// Run once on startup
+		if err := services.CheckInactivity(); err != nil {
+			log.Printf("Error running initial inactivity check: %v", err)
+		}
+
+		for range ticker.C {
+			if err := services.CheckInactivity(); err != nil {
+				log.Printf("Error running scheduled inactivity check: %v", err)
+			}
+		}
+	}()
 
 	log.Print("Attempting app start")
 	port := os.Getenv("PORT")

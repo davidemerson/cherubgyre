@@ -30,6 +30,15 @@ func SaveDuress(username, duressType, message string, timestamp time.Time, addit
 		return err
 	}
 
+	// Remove any existing duress signals for this user
+	var filteredDuresses []Duress
+	for _, d := range duresses {
+		if d.Username != username {
+			filteredDuresses = append(filteredDuresses, d)
+		}
+	}
+	duresses = filteredDuresses
+
 	duresses = append(duresses, Duress{
 		Username:       username,
 		DuressType:     duressType,
@@ -65,12 +74,13 @@ func DeleteDuress(username string) error {
 		return err
 	}
 
-	for i, duress := range duresses {
-		if duress.Username == username {
-			duresses = append(duresses[:i], duresses[i+1:]...)
-			break
+	var newDuresses []Duress
+	for _, duress := range duresses {
+		if duress.Username != username {
+			newDuresses = append(newDuresses, duress)
 		}
 	}
+	duresses = newDuresses
 
 	file.Seek(0, 0)
 	file.Truncate(0)

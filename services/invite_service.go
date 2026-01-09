@@ -31,19 +31,11 @@ func CreateInvite(token string) (string, error) {
 
 	// Rate limiting logic
 	now := time.Now().Unix()
-	var validHistory []int64
-	for _, timestamp := range user.InviteGenerationHistory {
-		if now-timestamp < 3600 { // 3600 seconds = 1 hour
-			validHistory = append(validHistory, timestamp)
-		}
+	newHistory, err := CheckRateLimit(user.InviteGenerationHistory, now, 5, 168*3600)
+	if err != nil {
+		return "", err
 	}
-
-	if len(validHistory) >= 3 {
-		return "", errors.New("rate limit exceeded: max 3 invites per hour")
-	}
-
-	validHistory = append(validHistory, now)
-	user.InviteGenerationHistory = validHistory
+	user.InviteGenerationHistory = newHistory
 
 	inviteCode := uuid.New().String()
 	user.UserInviteCode = inviteCode
@@ -56,4 +48,20 @@ func CreateInvite(token string) (string, error) {
 
 	log.Println("Invite code created successfully:", inviteCode)
 	return inviteCode, nil
+}
+
+func CheckRateLimit(history []int64, now int64, limit int, windowSeconds int64) ([]int64, error) {
+	var validHistory []int64
+	for _, timestamp := range history {
+		if now-timestamp < windowSeconds {
+			validHistory = append(validHistory, timestamp)
+		}
+	}
+
+	if len(validHistory) >= limit {
+		return nil, errors.New("rate limit exceeded")
+	}
+
+	validHistory = append(validHistory, now)
+	return validHistory, nil
 }

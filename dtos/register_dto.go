@@ -1,11 +1,17 @@
 package dtos
 
+import (
+	"time"
+)
+
 type RegisterDTO struct {
-	UserInviteCode          string  `json:"invite_code_user,omitempty"`
-	NormalPin               string  `json:"normal_pin"`
-	DuressPin               string  `json:"duress_pin"`
-	Username                string  `json:"username,omitempty"`
-	InviteCode              string  `json:"invite_code"`
-	Avatar                  string  `json:"avatar,omitempty"`
-	InviteGenerationHistory []int64 `json:"invite_generation_history,omitempty"`
+	UserInviteCode          string    `json:"invite_code_user,omitempty"`
+	NormalPin               string    `json:"normal_pin"`
+	DuressPin               string    `json:"duress_pin"`
+	Username                string    `json:"username,omitempty"`
+	InviteCode              string    `json:"invite_code"`
+	Avatar                  string    `json:"avatar,omitempty"`
+	InviteGenerationHistory []int64   `json:"invite_generation_history,omitempty"`
+	FailedAttempts          int       `json:"failed_attempts"`
+	LastActive              time.Time `json:"last_active"`
 }
