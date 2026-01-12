@@ -65,14 +65,9 @@ func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 	// Handle based on PIN type
 	switch pinType {
 	case 1:
-		// Normal PIN - Cancel any active duress signal
-		log.Println("Normal PIN login - checking for active duress signals")
-		// We use repositories directly here to avoid circular dep if needed, but same package is fine
-		err := repositories.DeleteDuress(request.Username)
-		if err != nil {
-			log.Printf("Note: Error canceling duress (may not exist): %v", err)
-			// Don't fail login if duress deletion fails - user may not have active duress
-		}
+		// Normal PIN - Do NOT cancel active duress signal (User request)
+		log.Println("Normal PIN login - preserving any active duress signals")
+
 	case 2:
 		// Duress PIN - Create silent duress signal
 		log.Println("Duress PIN login - creating silent duress signal")
