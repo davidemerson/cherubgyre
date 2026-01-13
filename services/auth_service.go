@@ -4,6 +4,7 @@ import (
 	"cherubgyre/dtos"
 	"cherubgyre/repositories"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -21,27 +22,52 @@ type Claims struct {
 
 func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 	log.Println("Login attempt for user:", request.Username)
-	pinType, err := repositories.ValidateUserCredentials(request.Username, request.PIN)
-	if err != nil {
-		log.Println("Error validating user credentials:", err)
-		return dtos.LoginResponse{}, errors.New("invalid credentials")
-	}
 	
-	if pinType == 0 {
-		log.Println("Invalid credentials for user:", request.Username)
+	// Get user first to check/update status
+	user, err := repositories.GetUserByID(request.Username)
+	if err != nil {
+		// User not found - generic error
+		log.Println("User not found:", request.Username)
 		return dtos.LoginResponse{}, errors.New("invalid credentials")
 	}
+
+	pinType, err := repositories.ValidateUserCredentials(request.Username, request.PIN)
+	
+	// Handle Failed Login (Launch Lock)
+	if err != nil || pinType == 0 {
+		log.Println("Invalid credentials for user:", request.Username)
+		
+		// Increment failed attempts
+		user.FailedAttempts++
+		log.Printf("User %s failed attempt %d/10", user.Username, user.FailedAttempts)
+		
+		if user.FailedAttempts >= 10 {
+			// Trigger Launch Lock Deregistration
+			log.Printf("User %s exceeded Launch Lock limit. Deregistering...", user.Username)
+			DeregisterUser(user.Username, "Launch Lock (10 failed PIN attempts)")
+			return dtos.LoginResponse{}, errors.New("account has been locked and removed due to excessive failed attempts")
+		}
+		
+		// Save the failed attempt count
+		repositories.UpdateUser(user)
+		
+		remainingAttempts := 10 - user.FailedAttempts
+		errorMessage := fmt.Sprintf("Invalid credentials. %d attempts remaining before account deletion.", remainingAttempts)
+		return dtos.LoginResponse{}, errors.New(errorMessage)
+	}
+
+	// Handle Successful Login
+	// Reset failed attempts and update last active
+	user.FailedAttempts = 0
+	user.LastActive = time.Now()
+	repositories.UpdateUser(user)
 
 	// Handle based on PIN type
 	switch pinType {
 	case 1:
-		// Normal PIN - Cancel any active duress signal
-		log.Println("Normal PIN login - checking for active duress signals")
-		err := repositories.DeleteDuress(request.Username)
-		if err != nil {
-			log.Printf("Note: Error canceling duress (may not exist): %v", err)
-			// Don't fail login if duress deletion fails - user may not have active duress
-		}
+		// Normal PIN - Do NOT cancel active duress signal (User request)
+		log.Println("Normal PIN login - preserving any active duress signals")
+
 	case 2:
 		// Duress PIN - Create silent duress signal
 		log.Println("Duress PIN login - creating silent duress signal")
@@ -50,7 +76,7 @@ func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 			"Silent Login",
 			"Duress initiated via Login Screen",
 			time.Now(),
-			map[string]interface{}{},
+			request.AdditionalData,
 		)
 		if err != nil {
 			log.Printf("Error creating duress signal: %v", err)
@@ -143,4 +169,40 @@ func IsDuressToken(tokenStr string) bool {
 	}
 
 	return claims.IsDuress
+}
+
+func ChangePin(username, currentPin, newPin string) error {
+	user, err := repositories.GetUserByID(username)
+	if err != nil {
+		return err
+	}
+
+	if user.NormalPin != currentPin {
+		return errors.New("incorrect current pin")
+	}
+
+	if user.DuressPin == newPin {
+		return errors.New("new pin cannot be the same as your duress pin")
+	}
+
+	user.NormalPin = newPin
+	return repositories.UpdateUser(user)
+}
+
+func ChangeDuressPin(username, currentPin, newPin string) error {
+	user, err := repositories.GetUserByID(username)
+	if err != nil {
+		return err
+	}
+
+	if user.DuressPin != currentPin {
+		return errors.New("incorrect current duress pin")
+	}
+
+	if user.NormalPin == newPin {
+		return errors.New("new duress pin cannot be the same as your normal pin")
+	}
+
+	user.DuressPin = newPin
+	return repositories.UpdateUser(user)
 }

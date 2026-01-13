@@ -322,3 +322,68 @@ func MarkInviteCodeAsUsed(inviteCode string) error {
 	return nil
 }
 
+// DeleteUser removes a user from the users.json file
+func DeleteUser(username string) error {
+	file, err := os.OpenFile("users.json", os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		log.Printf("Error opening file: %v", err)
+		return err
+	}
+	defer file.Close()
+
+	var users []dtos.RegisterDTO
+	if err := json.NewDecoder(file).Decode(&users); err != nil && err.Error() != "EOF" {
+		log.Printf("Error decoding user data: %v", err)
+		return err
+	}
+
+	index := -1
+	for i, user := range users {
+		if user.Username == username {
+			index = i
+			break
+		}
+	}
+
+	if index == -1 {
+		return errors.New("user not found")
+	}
+
+	// Remove element at index
+	users = append(users[:index], users[index+1:]...)
+
+	file.Seek(0, 0)
+	file.Truncate(0)
+
+	if err := json.NewEncoder(file).Encode(users); err != nil {
+		log.Printf("Error encoding user data: %v", err)
+		return err
+	}
+
+	log.Printf("User deleted: %s", username)
+	return nil
+}
+
+// GetAllUsers returns all users in the system
+func GetAllUsers() ([]dtos.RegisterDTO, error) {
+	file, err := os.OpenFile("users.json", os.O_RDONLY|os.O_CREATE, 0644)
+	if err != nil {
+		log.Printf("Error opening file: %v", err)
+		return nil, err
+	}
+	defer file.Close()
+
+	var users []dtos.RegisterDTO
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&users)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return []dtos.RegisterDTO{}, nil
+		}
+		log.Printf("Error decoding user data: %v", err)
+		return nil, err
+	}
+
+	return users, nil
+}
+
