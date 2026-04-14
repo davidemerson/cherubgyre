@@ -3,3 +3,16 @@ users.json
 followers.json
 duress.json
 used_invite_codes.json
+
+# Build artifacts
+main
+cherubgyre
+cherubgyre.exe
+*.exe
+coverage.out
+coverage.html
+
+# Python test caches
+__pycache__/
+.pytest_cache/
+*.pyc

@@ -9,27 +9,14 @@ import (
 	"github.com/google/uuid"
 )
 
-func CreateInvite(token string) (string, error) {
-	log.Println("CreateInvite called with token:", token)
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return "", errors.New("invalid token")
-	}
-
-	username, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return "", err
-	}
-
+// CreateInvite mints a new invite UUID on behalf of the already-authenticated
+// user. Rate-limited to 5 per 168 hours per the spec.
+func CreateInvite(username string) (string, error) {
 	user, err := repositories.GetUserByID(username)
 	if err != nil {
-		log.Println("Error getting user by ID:", err)
 		return "", err
 	}
 
-	// Rate limiting logic
 	now := time.Now().Unix()
 	newHistory, err := CheckRateLimit(user.InviteGenerationHistory, now, 5, 168*3600)
 	if err != nil {
@@ -40,21 +27,22 @@ func CreateInvite(token string) (string, error) {
 	inviteCode := uuid.New().String()
 	user.UserInviteCode = inviteCode
 
-	err = repositories.UpdateUser(user)
-	if err != nil {
-		log.Println("Error updating user:", err)
+	if err := repositories.UpdateUser(user); err != nil {
 		return "", err
 	}
 
-	log.Println("Invite code created successfully:", inviteCode)
+	log.Printf("Invite code created for %s", username)
 	return inviteCode, nil
 }
 
+// CheckRateLimit implements a generic sliding-window limiter over a sorted
+// list of epoch-second timestamps. Returns a pruned history with `now`
+// appended on success, or an error if the window would exceed `limit`.
 func CheckRateLimit(history []int64, now int64, limit int, windowSeconds int64) ([]int64, error) {
-	var validHistory []int64
-	for _, timestamp := range history {
-		if now-timestamp < windowSeconds {
-			validHistory = append(validHistory, timestamp)
+	validHistory := make([]int64, 0, len(history))
+	for _, ts := range history {
+		if now-ts < windowSeconds {
+			validHistory = append(validHistory, ts)
 		}
 	}
 
@@ -65,5 +53,3 @@ func CheckRateLimit(history []int64, now int64, limit int, windowSeconds int64) 
 	validHistory = append(validHistory, now)
 	return validHistory, nil
 }
-
-

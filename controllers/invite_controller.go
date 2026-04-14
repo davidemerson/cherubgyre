@@ -3,30 +3,30 @@ package controllers
 import (
 	"cherubgyre/services"
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
 func Invite(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
-	if token == "" {
-		http.Error(w, "Missing token", http.StatusUnauthorized)
-		return
-	}
+	p := Identity(r)
 
-	// Check if token is in duress mode
-	if services.IsDuressToken(token) {
-		// Return dummy invite code
+	if p.IsDuress {
 		response := map[string]interface{}{
 			"message":    "Invite code created successfully",
-			"inviteCode": "DUMMY-INVITE-CODE-000",
+			"inviteCode": services.GetDummyInviteCode(),
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 		return
 	}
 
-	inviteCode, err := services.CreateInvite(token)
+	inviteCode, err := services.CreateInvite(p.Username)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("Error creating invite: %v", err)
+		if err.Error() == "rate limit exceeded" {
+			http.Error(w, err.Error(), http.StatusTooManyRequests)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
@@ -34,5 +34,5 @@ func Invite(w http.ResponseWriter, r *http.Request) {
 		"message":    "Invite code created successfully",
 		"inviteCode": inviteCode,
 	}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"cherubgyre/services"
+	"crypto/subtle"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -9,10 +10,36 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// adminToken is installed by SetAdminToken at startup. An empty value
+// causes every admin request to be rejected.
+var adminToken string
+
+// SetAdminToken installs the shared-secret admin token. Called from main().
+func SetAdminToken(token string) {
+	adminToken = token
+}
+
+// requireAdmin returns true and writes a 401 when the request does not
+// present the expected X-Admin-Token header. Callers should return if it
+// returns false.
+func requireAdmin(w http.ResponseWriter, r *http.Request) bool {
+	if adminToken == "" {
+		http.Error(w, "admin disabled", http.StatusServiceUnavailable)
+		return false
+	}
+	got := r.Header.Get("X-Admin-Token")
+	if subtle.ConstantTimeCompare([]byte(got), []byte(adminToken)) != 1 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
 func AdminDeregisterUser(w http.ResponseWriter, r *http.Request) {
-	// Ideally, add admin authentication here.
-	// For now, we assume the route is protected or internal.
-	
+	if !requireAdmin(w, r) {
+		return
+	}
+
 	vars := mux.Vars(r)
 	username := vars["username"]
 
@@ -36,5 +63,5 @@ func AdminDeregisterUser(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	response := map[string]string{"message": "User successfully deregistered"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }

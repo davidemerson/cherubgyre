@@ -24,7 +24,13 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("User registered successfully: %+v", user)
+	log.Printf("User registered successfully: %s", user.Username)
+	// Never echo PIN material back to the caller, even though the service
+	// already clears the hash fields.
+	user.NormalPin = ""
+	user.DuressPin = ""
+	user.NormalPinHash = ""
+	user.DuressPinHash = ""
 	w.WriteHeader(http.StatusCreated)
 	response := map[string]interface{}{
 		"message": message,
@@ -32,5 +38,5 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	}
 	encoder := json.NewEncoder(w)
 	encoder.SetEscapeHTML(false)
-	encoder.Encode(response)
+	_ = encoder.Encode(response)
 }

@@ -7,133 +7,69 @@ import (
 	"time"
 )
 
-func PostDuress(token, duressType, message string, timestamp time.Time, additionalData map[string]interface{}, duressPin string) error {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return errors.New("invalid token")
-	}
-
-	username, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return err
-	}
-
+// PostDuress creates a user-initiated duress signal. The caller must have
+// re-entered their duress PIN; we re-validate here as defense in depth.
+// Rate-limited to one signal per hour per user (per spec).
+func PostDuress(username, duressType, message string, timestamp time.Time, additionalData map[string]interface{}, duressPin string) error {
 	user, err := repositories.GetUserByID(username)
 	if err != nil {
-		log.Println("Error getting user by ID:", err)
 		return err
 	}
 
-	if user.DuressPin != duressPin {
-		log.Println("Invalid duress pin for user:", username)
+	pinType, err := repositories.ValidateUserCredentials(username, duressPin)
+	if err != nil || pinType != 2 {
 		return errors.New("invalid credentials")
 	}
 
-	err = repositories.SaveDuress(username, duressType, message, timestamp, additionalData)
-	if err != nil {
+	if !user.LastDuressAt.IsZero() && time.Since(user.LastDuressAt) < time.Hour {
+		return errors.New("duress rate limit exceeded")
+	}
+
+	if err := repositories.SaveDuress(username, duressType, message, timestamp, additionalData); err != nil {
 		log.Println("Error saving duress:", err)
 		return err
 	}
 
+	user.LastDuressAt = time.Now()
+	if err := repositories.UpdateUser(user); err != nil {
+		log.Printf("Failed to persist LastDuressAt for %s: %v", username, err)
+	}
 	return nil
 }
 
-func CancelDuress(token string) error {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return errors.New("invalid token")
+// CancelDuress clears the caller's active duress signal. Per spec, this
+// requires re-entering the normal PIN so a coercer holding the duress-mode
+// session cannot cancel the alert they triggered.
+func CancelDuress(username, normalPin string) error {
+	pinType, err := repositories.ValidateUserCredentials(username, normalPin)
+	if err != nil || pinType != 1 {
+		return errors.New("invalid credentials")
 	}
-
-	username, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return err
-	}
-
-	err = repositories.DeleteDuress(username)
-	if err != nil {
-		log.Println("Error deleting duress:", err)
-		return err
-	}
-
-	return nil
+	return repositories.DeleteDuress(username)
 }
 
-func GetDuressMap(token string) (map[string]interface{}, error) {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return nil, errors.New("invalid token")
-	}
-
-	username, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return nil, err
-	}
-
-	duressMap, err := repositories.GetDuressMap(username)
-	if err != nil {
-		log.Println("Error getting duress map:", err)
-		return nil, err
-	}
-
-	return duressMap, nil
+func GetDuressMap(username string) (map[string]interface{}, error) {
+	return repositories.GetDuressMap(username)
 }
 
-func GetFollowingDuress(token string) ([]repositories.Duress, error) {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return nil, errors.New("invalid token")
-	}
-
-	username, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return nil, err
-	}
-
+func GetFollowingDuress(username string) ([]repositories.Duress, error) {
 	following, err := repositories.GetFollowing(username)
 	if err != nil {
-		log.Println("Error getting following list:", err)
 		return nil, err
 	}
-
-	activeDuresses, err := repositories.GetActiveDuressForUsers(following)
-	if err != nil {
-		log.Println("Error getting active duresses:", err)
-		return nil, err
-	}
-
-	return activeDuresses, nil
+	return repositories.GetActiveDuressForUsers(following)
 }
 
-func VerifyDuressPin(token, pin string) error {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return errors.New("invalid token")
-	}
-
-	username, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return err
-	}
-
+// VerifyDuressPin confirms that `pin` is the caller's duress PIN. Used by
+// the /duress/verify endpoint before granting special access to
+// duress-related views in the app UI.
+func VerifyDuressPin(username, pin string) error {
 	pinType, err := repositories.ValidateUserCredentials(username, pin)
 	if err != nil {
-		log.Println("Error validating credentials:", err)
-		return err
+		return errors.New("invalid credentials")
 	}
-
 	if pinType != 2 {
 		return errors.New("invalid duress pin")
 	}
-
 	return nil
 }

@@ -9,88 +9,107 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtKey = []byte("your_secret_key")
+// jwtKey is set once at startup by SetJWTSecret. Requests fail closed if it
+// is not configured so that a misconfigured deployment cannot accidentally
+// sign tokens with an empty key.
+var jwtKey []byte
+
+// SetJWTSecret installs the signing key used by Login/ValidateToken/etc.
+// Call this from main() before starting the HTTP server.
+func SetJWTSecret(secret []byte) {
+	jwtKey = secret
+}
 
 type Claims struct {
 	UserID   string `json:"user_id"`
 	IsDuress bool   `json:"is_duress"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
+}
+
+// errInvalidCredentials is the single opaque error returned for any login
+// failure (unknown user, wrong PIN, missing pin, etc.) so callers cannot
+// distinguish causes and enumerate the username space.
+var errInvalidCredentials = errors.New("invalid credentials")
+
+// MinPinLength is the minimum acceptable PIN length, applied uniformly to
+// registration, change-pin, and change-duress-pin. Kept as a package-level
+// constant so all three sites agree on the same rule.
+const MinPinLength = 4
+
+// ValidatePin enforces the shared PIN policy. Today just a length check;
+// future rules (no sequential digits, no repeats, etc.) go here.
+func ValidatePin(pin string) error {
+	if len(pin) < MinPinLength {
+		return fmt.Errorf("PIN must be at least %d characters", MinPinLength)
+	}
+	return nil
 }
 
 func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
+	if len(jwtKey) == 0 {
+		return dtos.LoginResponse{}, errors.New("server not configured")
+	}
+
 	log.Println("Login attempt for user:", request.Username)
-	
-	// Get user first to check/update status
+
 	user, err := repositories.GetUserByID(request.Username)
 	if err != nil {
-		// User not found - generic error
-		log.Println("User not found:", request.Username)
-		return dtos.LoginResponse{}, errors.New("invalid credentials")
+		// Unknown user: return the same opaque error as a wrong PIN so the
+		// /login endpoint cannot be used to enumerate existing usernames.
+		return dtos.LoginResponse{}, errInvalidCredentials
 	}
 
 	pinType, err := repositories.ValidateUserCredentials(request.Username, request.PIN)
-	
-	// Handle Failed Login (Launch Lock)
 	if err != nil || pinType == 0 {
-		log.Println("Invalid credentials for user:", request.Username)
-		
-		// Increment failed attempts
 		user.FailedAttempts++
 		log.Printf("User %s failed attempt %d/10", user.Username, user.FailedAttempts)
-		
+
 		if user.FailedAttempts >= 10 {
-			// Trigger Launch Lock Deregistration
+			// Launch Lock: intentional per threat model. Deregister the user
+			// completely after 10 failed attempts.
 			log.Printf("User %s exceeded Launch Lock limit. Deregistering...", user.Username)
-			DeregisterUser(user.Username, "Launch Lock (10 failed PIN attempts)")
-			return dtos.LoginResponse{}, errors.New("account has been locked and removed due to excessive failed attempts")
+			_ = DeregisterUser(user.Username, "Launch Lock (10 failed PIN attempts)")
+			return dtos.LoginResponse{}, errInvalidCredentials
 		}
-		
-		// Save the failed attempt count
-		repositories.UpdateUser(user)
-		
-		remainingAttempts := 10 - user.FailedAttempts
-		errorMessage := fmt.Sprintf("Invalid credentials. %d attempts remaining before account deletion.", remainingAttempts)
-		return dtos.LoginResponse{}, errors.New(errorMessage)
+
+		if err := repositories.UpdateUser(user); err != nil {
+			log.Printf("Failed to persist failed-attempt counter: %v", err)
+		}
+		return dtos.LoginResponse{}, errInvalidCredentials
 	}
 
-	// Handle Successful Login
-	// Reset failed attempts and update last active
 	user.FailedAttempts = 0
 	user.LastActive = time.Now()
-	repositories.UpdateUser(user)
+	if err := repositories.UpdateUser(user); err != nil {
+		log.Printf("Failed to persist successful login state: %v", err)
+	}
 
-	// Handle based on PIN type
 	switch pinType {
 	case 1:
-		// Normal PIN - Do NOT cancel active duress signal (User request)
 		log.Println("Normal PIN login - preserving any active duress signals")
-
 	case 2:
-		// Duress PIN - Create silent duress signal
 		log.Println("Duress PIN login - creating silent duress signal")
-		err := repositories.SaveDuress(
+		if err := repositories.SaveDuress(
 			request.Username,
 			"Silent Login",
 			"Duress initiated via Login Screen",
 			time.Now(),
 			request.AdditionalData,
-		)
-		if err != nil {
+		); err != nil {
 			log.Printf("Error creating duress signal: %v", err)
-			// Continue with login even if duress creation fails
 		}
 	}
 
-	// Generate JWT token for both cases
 	expirationTime := time.Now().Add(24 * time.Hour)
 	claims := &Claims{
 		UserID:   request.Username,
-		IsDuress: pinType == 2, // Set to true if Duress PIN was used
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
+		IsDuress: pinType == 2,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
 
@@ -105,104 +124,101 @@ func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 	return dtos.LoginResponse{Token: tokenString}, nil
 }
 
-func ValidateToken(tokenStr string) (bool, error) {
-	log.Println("Validating token")
-
-	// Remove 'bearer ' prefix if it exists
+func parseToken(tokenStr string) (*Claims, error) {
+	if len(jwtKey) == 0 {
+		return nil, errors.New("server not configured")
+	}
+	tokenStr = strings.TrimSpace(tokenStr)
 	if strings.HasPrefix(strings.ToLower(tokenStr), "bearer ") {
 		tokenStr = tokenStr[7:]
 	}
-
 	claims := &Claims{}
-	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
 		return jwtKey, nil
 	})
-
 	if err != nil {
-		log.Println("Error parsing token:", err)
-		return false, err
+		return nil, err
 	}
 	if !token.Valid {
-		log.Println("Invalid token")
-		return false, errors.New("invalid token")
+		return nil, errors.New("invalid token")
 	}
+	return claims, nil
+}
 
-	log.Println("Token is valid for user:", claims.UserID)
+func ValidateToken(tokenStr string) (bool, error) {
+	if _, err := parseToken(tokenStr); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
 func GetUsernameFromToken(tokenStr string) (string, error) {
-	if strings.HasPrefix(strings.ToLower(tokenStr), "bearer ") {
-		tokenStr = tokenStr[7:]
-	}
-
-	claims := &Claims{}
-	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
-		return jwtKey, nil
-	})
-
-	if err != nil || !token.Valid {
+	claims, err := parseToken(tokenStr)
+	if err != nil {
 		return "", errors.New("invalid token")
 	}
-
 	return claims.UserID, nil
 }
 
-// GetUserProfile returns user info for a given username
+// GetUserProfile returns user info for a given username.
 func GetUserProfile(username string) (dtos.RegisterDTO, error) {
 	return repositories.GetUserByID(username)
 }
 
-// IsDuressToken checks if a token is in duress mode
+// IsDuressToken reports whether the caller authenticated with a duress PIN.
 func IsDuressToken(tokenStr string) bool {
-	if strings.HasPrefix(strings.ToLower(tokenStr), "bearer ") {
-		tokenStr = tokenStr[7:]
-	}
-
-	claims := &Claims{}
-	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
-		return jwtKey, nil
-	})
-
-	if err != nil || !token.Valid {
+	claims, err := parseToken(tokenStr)
+	if err != nil {
 		return false
 	}
-
 	return claims.IsDuress
 }
 
 func ChangePin(username, currentPin, newPin string) error {
+	pinType, err := repositories.ValidateUserCredentials(username, currentPin)
+	if err != nil || pinType != 1 {
+		return errors.New("incorrect current pin")
+	}
+
+	if _, err := repositories.ValidateUserCredentials(username, newPin); err == nil {
+		return errors.New("new pin cannot be the same as your duress pin")
+	}
+
 	user, err := repositories.GetUserByID(username)
 	if err != nil {
 		return err
 	}
-
-	if user.NormalPin != currentPin {
-		return errors.New("incorrect current pin")
+	hash, err := HashPin(newPin)
+	if err != nil {
+		return err
 	}
-
-	if user.DuressPin == newPin {
-		return errors.New("new pin cannot be the same as your duress pin")
-	}
-
-	user.NormalPin = newPin
+	user.NormalPinHash = hash
+	user.NormalPin = ""
 	return repositories.UpdateUser(user)
 }
 
 func ChangeDuressPin(username, currentPin, newPin string) error {
+	pinType, err := repositories.ValidateUserCredentials(username, currentPin)
+	if err != nil || pinType != 2 {
+		return errors.New("incorrect current duress pin")
+	}
+
+	if pt, err := repositories.ValidateUserCredentials(username, newPin); err == nil && pt == 1 {
+		return errors.New("new duress pin cannot be the same as your normal pin")
+	}
+
 	user, err := repositories.GetUserByID(username)
 	if err != nil {
 		return err
 	}
-
-	if user.DuressPin != currentPin {
-		return errors.New("incorrect current duress pin")
+	hash, err := HashPin(newPin)
+	if err != nil {
+		return err
 	}
-
-	if user.NormalPin == newPin {
-		return errors.New("new duress pin cannot be the same as your normal pin")
-	}
-
-	user.DuressPin = newPin
+	user.DuressPinHash = hash
+	user.DuressPin = ""
 	return repositories.UpdateUser(user)
 }

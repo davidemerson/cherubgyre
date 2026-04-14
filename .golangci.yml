@@ -1,0 +1,35 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+    - gocritic
+    - gosimple
+    - misspell
+    - unconvert
+    - unparam
+
+linters-settings:
+  gosec:
+    excludes:
+      - G104 # Audited: explicit error handling in hot paths
+  gocritic:
+    disabled-checks:
+      - ifElseChain
+
+issues:
+  exclude-dirs:
+    - test
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck

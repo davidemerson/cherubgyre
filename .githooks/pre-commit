@@ -1,15 +1,16 @@
 #!/bin/sh
+# Pre-commit hook: verify the project still builds, vets clean, and tests pass.
+# Intentionally does NOT write any artifacts into the tree.
 
-# Pre-commit hook to build the Go project before committing
-echo "Building project before commit..."
+set -e
 
-GOOS=linux GOARCH=amd64 go build -o main main.go
+echo "Running go vet..."
+go vet ./...
 
-if [ $? -ne 0 ]; then
-    echo "❌ Build failed! Commit aborted."
-    exit 1
-fi
+echo "Running go build (no output)..."
+go build -o /dev/null ./...
 
-echo "✅ Build successful!"
-exit 0
+echo "Running go test..."
+go test ./... -count=1
 
+echo "OK"

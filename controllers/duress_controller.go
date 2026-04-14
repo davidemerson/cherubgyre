@@ -19,115 +19,128 @@ type DuressRequest struct {
 }
 
 func PostDuress(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
-	var duressRequest DuressRequest
-	if err := json.NewDecoder(r.Body).Decode(&duressRequest); err != nil {
-		log.Printf("Error decoding duress request: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	p := Identity(r)
+
+	var req DuressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	err := services.PostDuress(token, duressRequest.DuressType, duressRequest.Message, duressRequest.Timestamp, duressRequest.AdditionalData, duressRequest.DuressPin)
+	err := services.PostDuress(p.Username, req.DuressType, req.Message, req.Timestamp, req.AdditionalData, req.DuressPin)
 	if err != nil {
-		log.Printf("Error posting duress: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		switch err.Error() {
+		case "invalid credentials":
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+		case "duress rate limit exceeded":
+			http.Error(w, err.Error(), http.StatusTooManyRequests)
+		default:
+			log.Printf("Error posting duress: %v", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "Duress posted successfully"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Duress posted successfully"})
 }
 
+// CancelDuress requires the normal PIN in the request body. Per the
+// threat model, a coercer who already holds a duress-mode session must
+// not be able to cancel the silent alert they caused.
 func CancelDuress(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 
-	err := services.CancelDuress(token)
-	if err != nil {
-		log.Printf("Error canceling duress: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	var req struct {
+		Pin string `json:"pin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Pin == "" {
+		http.Error(w, "pin is required", http.StatusBadRequest)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "Duress canceled successfully"}
-	json.NewEncoder(w).Encode(response)
+	if err := services.CancelDuress(p.Username, req.Pin); err != nil {
+		if err.Error() == "invalid credentials" {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+		log.Printf("Error canceling duress: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Duress canceled successfully"})
 }
 
 func GetDuressMap(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 
-	duressMap, err := services.GetDuressMap(token)
+	duressMap, err := services.GetDuressMap(p.Username)
 	if err != nil {
 		log.Printf("Error getting duress map: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(duressMap)
+	_ = json.NewEncoder(w).Encode(duressMap)
 }
 
 func GetFollowingDuress(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 
-	// Check if token is in duress mode - hide real duress signals
-	if services.IsDuressToken(token) {
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]interface{}{})
+	// Duress mode hides real duress signals entirely — a coercer looking
+	// at this screen must not see who else is in trouble.
+	if p.IsDuress {
+		_ = json.NewEncoder(w).Encode([]interface{}{})
 		return
 	}
 
-	duresses, err := services.GetFollowingDuress(token)
+	duresses, err := services.GetFollowingDuress(p.Username)
 	if err != nil {
 		log.Printf("Error getting following duress: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(duresses)
+	_ = json.NewEncoder(w).Encode(duresses)
 }
 
 func VerifyAccess(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
-	var request struct {
+	p := Identity(r)
+
+	var req struct {
 		Pin string `json:"pin"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		log.Printf("Error decoding verify access request: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	err := services.VerifyDuressPin(token, request.Pin)
-	if err != nil {
-		log.Printf("Error verifying duress access: %v", err)
+	if err := services.VerifyDuressPin(p.Username, req.Pin); err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "Access granted"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Access granted"})
 }
 
+// DismissDuressNotification removes the follow relationship for a user
+// who has left the service. Semantically equivalent to unfollow since the
+// target account no longer exists — the client-side notification goes
+// away once the relationship is gone.
 func DismissDuressNotification(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 	vars := mux.Vars(r)
-	username := vars["username"] // The username of the "Left" user (who is technically deleted)
+	target := vars["username"]
 
-	// We misuse "UnfollowUser" here because "Dismissing" a "User Left" notification
-	// is semantically equivalent to "I don't want to see updates from this user anymore".
-	// Since the user is deleted, removing the relationship is the correct way to stop the signal.
-	err := services.UnfollowUser(token, username)
-	if err != nil {
-		log.Printf("Error dismissing notification (unfollowing user %s): %v", username, err)
+	if err := services.UnfollowUser(p.Username, target); err != nil {
+		log.Printf("Error dismissing notification (unfollowing %s): %v", target, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "Notification dismissed (relationship removed)"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Notification dismissed"})
 }

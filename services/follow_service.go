@@ -3,134 +3,53 @@ package services
 import (
 	"cherubgyre/dtos"
 	"cherubgyre/repositories"
-	"errors"
 	"log"
 )
 
-func FollowUser(token, username string) error {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return errors.New("invalid token")
-	}
+// The follow service now takes already-authenticated usernames from the
+// controllers (via the RequireAuth middleware) instead of raw tokens.
+// This collapses the layer of per-function ValidateToken + GetUsernameFromToken
+// calls that were being done inconsistently at the service layer.
 
-	followerUsername, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return err
-	}
-
-	// Always creating a pending request now
-	err = repositories.AddFollower(followerUsername, username, "pending")
-	if err != nil {
+func FollowUser(followerUsername, targetUsername string) error {
+	if err := repositories.AddFollower(followerUsername, targetUsername, "pending"); err != nil {
 		log.Println("Error adding follow request:", err)
 		return err
 	}
-
 	return nil
 }
 
-func AcceptFollow(token, followerUsername string) error {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return errors.New("invalid token")
-	}
-
-	currentUser, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return err
-	}
-
-	// Current user is the one being followed, accepting the follower
-	err = repositories.AcceptFollower(followerUsername, currentUser)
-	if err != nil {
+func AcceptFollow(currentUsername, requesterUsername string) error {
+	if err := repositories.AcceptFollower(requesterUsername, currentUsername); err != nil {
 		log.Println("Error accepting follower:", err)
 		return err
 	}
-
 	return nil
 }
 
-func DeclineFollow(token, followerUsername string) error {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return errors.New("invalid token")
-	}
-
-	currentUser, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return err
-	}
-
-	// Current user declines the follower (removes the pending relationship)
-	err = repositories.RemoveFollower(followerUsername, currentUser)
-	if err != nil {
+func DeclineFollow(currentUsername, requesterUsername string) error {
+	if err := repositories.RemoveFollower(requesterUsername, currentUsername); err != nil {
 		log.Println("Error declining follower:", err)
 		return err
 	}
-
 	return nil
 }
 
-func UnfollowUser(token, username string) error {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return errors.New("invalid token")
-	}
-
-	followerUsername, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return err
-	}
-
-	err = repositories.RemoveFollower(followerUsername, username)
-	if err != nil {
+func UnfollowUser(followerUsername, targetUsername string) error {
+	if err := repositories.RemoveFollower(followerUsername, targetUsername); err != nil {
 		log.Println("Error removing follower:", err)
 		return err
 	}
-
 	return nil
 }
 
-func GetFollowRequests(token string) ([]dtos.UserResponseDTO, error) {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return nil, errors.New("invalid token")
-	}
-
-	username, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return nil, err
-	}
-
+func GetFollowRequests(username string) ([]dtos.UserResponseDTO, error) {
 	requestUsernames, err := repositories.GetFollowRequests(username)
 	if err != nil {
 		log.Println("Error getting follow requests:", err)
 		return nil, err
 	}
-
-	var requests []dtos.UserResponseDTO
-	for _, reqUsername := range requestUsernames {
-		user, err := repositories.GetUserByID(reqUsername)
-		if err != nil {
-			log.Printf("Error getting user details for request %s: %v", reqUsername, err)
-			continue
-		}
-		requests = append(requests, dtos.UserResponseDTO{
-			Username: user.Username,
-			Avatar:   user.Avatar,
-		})
-	}
-
-	return requests, nil
+	return lookupUsers(requestUsernames), nil
 }
 
 func GetFollowers(username string) ([]dtos.UserResponseDTO, error) {
@@ -139,76 +58,40 @@ func GetFollowers(username string) ([]dtos.UserResponseDTO, error) {
 		log.Println("Error getting followers:", err)
 		return nil, err
 	}
-
-	var followers []dtos.UserResponseDTO
-	for _, followerUsername := range followerUsernames {
-		user, err := repositories.GetUserByID(followerUsername)
-		if err != nil {
-			log.Printf("Error getting user details for follower %s: %v", followerUsername, err)
-			continue
-		}
-		followers = append(followers, dtos.UserResponseDTO{
-			Username: user.Username,
-			Avatar:   user.Avatar,
-		})
-	}
-
-	return followers, nil
+	return lookupUsers(followerUsernames), nil
 }
 
-func BanFollower(token, username string) error {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return errors.New("invalid token")
-	}
-
-	banningUsername, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return err
-	}
-
-	err = repositories.BanFollower(username, banningUsername)
-	if err != nil {
+func BanFollower(currentUsername, targetUsername string) error {
+	if err := repositories.BanFollower(targetUsername, currentUsername); err != nil {
 		log.Println("Error banning follower:", err)
 		return err
 	}
-
 	return nil
 }
 
-func GetFollowing(token string) ([]dtos.UserResponseDTO, error) {
-	valid, err := ValidateToken(token)
-	if err != nil || !valid {
-		log.Println("Invalid token:", token)
-		return nil, errors.New("invalid token")
-	}
-
-	username, err := GetUsernameFromToken(token)
-	if err != nil {
-		log.Println("Error getting username from token:", err)
-		return nil, err
-	}
-
+func GetFollowing(username string) ([]dtos.UserResponseDTO, error) {
 	followingUsernames, err := repositories.GetFollowing(username)
 	if err != nil {
 		log.Println("Error getting following list:", err)
 		return nil, err
 	}
+	return lookupUsers(followingUsernames), nil
+}
 
-	var following []dtos.UserResponseDTO
-	for _, followingUsername := range followingUsernames {
-		user, err := repositories.GetUserByID(followingUsername)
+// lookupUsers enriches a list of usernames with avatar info. Missing
+// users are skipped rather than errored — a deleted account in someone's
+// follower list shouldn't break the whole response.
+func lookupUsers(usernames []string) []dtos.UserResponseDTO {
+	out := make([]dtos.UserResponseDTO, 0, len(usernames))
+	for _, name := range usernames {
+		user, err := repositories.GetUserByID(name)
 		if err != nil {
-			log.Printf("Error getting user details for following %s: %v", followingUsername, err)
 			continue
 		}
-		following = append(following, dtos.UserResponseDTO{
+		out = append(out, dtos.UserResponseDTO{
 			Username: user.Username,
 			Avatar:   user.Avatar,
 		})
 	}
-
-	return following, nil
+	return out
 }

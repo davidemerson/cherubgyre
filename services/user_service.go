@@ -5,7 +5,40 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+// BackfillUIDs assigns a UUIDv7 to any legacy user record that predates
+// the UID field. Idempotent: users with an existing UID are untouched.
+// Called once at startup from main().
+func BackfillUIDs() error {
+	users, err := repositories.GetAllUsers()
+	if err != nil {
+		return err
+	}
+	filled := 0
+	for _, u := range users {
+		if u.UID != "" {
+			continue
+		}
+		uid, err := uuid.NewV7()
+		if err != nil {
+			log.Printf("failed to mint uid for %s: %v", u.Username, err)
+			continue
+		}
+		u.UID = uid.String()
+		if err := repositories.UpdateUser(u); err != nil {
+			log.Printf("failed to persist uid for %s: %v", u.Username, err)
+			continue
+		}
+		filled++
+	}
+	if filled > 0 {
+		log.Printf("UID backfill: assigned %d UID(s)", filled)
+	}
+	return nil
+}
 
 // DeregisterUser handles the complete removal of a user and notifies friends
 func DeregisterUser(username string, reason string) error {
@@ -33,6 +66,53 @@ func DeregisterUser(username string, reason string) error {
 		return err
 	}
 
+	return nil
+}
+
+// MigratePinHashes rewrites any user record that still has plaintext
+// NormalPin/DuressPin fields, hashing them with bcrypt and clearing the
+// plaintext. Idempotent: records that already have hashes are skipped.
+// Called once at startup so that legacy users.json files from before the
+// bcrypt rollout are brought into the new format with zero operator work.
+func MigratePinHashes() error {
+	users, err := repositories.GetAllUsers()
+	if err != nil {
+		return err
+	}
+	migrated := 0
+	for _, user := range users {
+		changed := false
+		if user.NormalPinHash == "" && user.NormalPin != "" {
+			hash, err := HashPin(user.NormalPin)
+			if err != nil {
+				log.Printf("Failed to hash normal pin for %s: %v", user.Username, err)
+				continue
+			}
+			user.NormalPinHash = hash
+			user.NormalPin = ""
+			changed = true
+		}
+		if user.DuressPinHash == "" && user.DuressPin != "" {
+			hash, err := HashPin(user.DuressPin)
+			if err != nil {
+				log.Printf("Failed to hash duress pin for %s: %v", user.Username, err)
+				continue
+			}
+			user.DuressPinHash = hash
+			user.DuressPin = ""
+			changed = true
+		}
+		if changed {
+			if err := repositories.UpdateUser(user); err != nil {
+				log.Printf("Failed to persist migrated pins for %s: %v", user.Username, err)
+				continue
+			}
+			migrated++
+		}
+	}
+	if migrated > 0 {
+		log.Printf("PIN migration: hashed %d legacy user record(s)", migrated)
+	}
 	return nil
 }
 

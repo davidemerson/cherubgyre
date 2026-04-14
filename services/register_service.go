@@ -8,58 +8,68 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
-const (
-	charset       = "abcdefghijklmnopqrstuvwxyz"
-	usernameParts = 3
-)
+const bcryptCost = 12
 
-func generateRandomString(length int, charSet string) (string, error) {
-	result := make([]byte, length)
-	for i := range result {
-		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(charSet))))
-		if err != nil {
-			return "", err
-		}
-		result[i] = charSet[num.Int64()]
+// HashPin produces a bcrypt hash suitable for storing in NormalPinHash or
+// DuressPinHash. Exposed so the migration job can reuse the same cost.
+func HashPin(pin string) (string, error) {
+	h, err := bcrypt.GenerateFromPassword([]byte(pin), bcryptCost)
+	if err != nil {
+		return "", err
 	}
-	return string(result), nil
+	return string(h), nil
 }
 
-func generateRandomDigits(length int) (string, error) {
-	result := make([]byte, length)
-	for i := range result {
-		num, err := rand.Int(rand.Reader, big.NewInt(10)) // 0-9
-		if err != nil {
-			return "", err
-		}
-		result[i] = byte(num.Int64() + '0')
+// pickWord returns a cryptographically random element from the given slice.
+func pickWord(words []string) (string, error) {
+	if len(words) == 0 {
+		return "", errors.New("empty wordlist")
 	}
-	return string(result), nil
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(words))))
+	if err != nil {
+		return "", err
+	}
+	return words[n.Int64()], nil
 }
 
+// generateUsername produces a spec-format username of the shape
+// "angel-type-city" (e.g., "cherub-gyre-chicago"). Each component is
+// drawn from an embedded wordlist using crypto/rand. The combined space
+// is much larger and less pattern-matchable than the legacy
+// "{3 letters}_{3 digits}" format and is thus materially harder to
+// enumerate, which closes the Launch Lock DoS vector from the plan.
 func generateUsername() (string, error) {
-	letters, err := generateRandomString(usernameParts, charset)
+	a, err := pickWord(angelWords)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate random letters: %w", err)
+		return "", fmt.Errorf("generate username: %w", err)
 	}
-	digits, err := generateRandomDigits(usernameParts)
+	t, err := pickWord(typeWords)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate random digits: %w", err)
+		return "", fmt.Errorf("generate username: %w", err)
 	}
-	return fmt.Sprintf("%s_%s", letters, digits), nil
+	c, err := pickWord(cityWords)
+	if err != nil {
+		return "", fmt.Errorf("generate username: %w", err)
+	}
+	return a + "-" + t + "-" + c, nil
 }
 
 func RegisterUser(registerDTO dtos.RegisterDTO) (string, dtos.RegisterDTO, error) {
-	// Username is no longer expected from the DTO input for validation here
 	if registerDTO.NormalPin == "" || registerDTO.DuressPin == "" || registerDTO.InviteCode == "" {
-		log.Println("Validation failed: normal_pin, duress_pin, and invite_code are required")
 		return "", dtos.RegisterDTO{}, errors.New("normal_pin, duress_pin, and invite_code are required")
 	}
-
+	if err := ValidatePin(registerDTO.NormalPin); err != nil {
+		return "", dtos.RegisterDTO{}, err
+	}
+	if err := ValidatePin(registerDTO.DuressPin); err != nil {
+		return "", dtos.RegisterDTO{}, err
+	}
 	if registerDTO.DuressPin == registerDTO.NormalPin {
-		log.Println("Validation failed: duress_pin and normal_pin cannot be the same")
 		return "", dtos.RegisterDTO{}, errors.New("duress_pin and normal_pin cannot be the same")
 	}
 
@@ -86,15 +96,39 @@ func RegisterUser(registerDTO dtos.RegisterDTO) (string, dtos.RegisterDTO, error
 	}
 
 	registerDTO.Avatar = "https://api.dicebear.com/7.x/identicon/svg?seed=" + username + "&rowColor=000000"
+	registerDTO.Username = username
 
-	registerDTO.Username = username // Set the generated username in the DTO
-
-	err = repositories.SaveUser(registerDTO) // Pass the DTO with the username
+	// Assign a UUIDv7 UID at creation time (spec requirement). Usernames
+	// can be recycled when a deregistered slot is freed, but a UID is
+	// immutable so relationships can remain stable even after recycling.
+	uid, err := uuid.NewV7()
 	if err != nil {
+		return "", dtos.RegisterDTO{}, fmt.Errorf("failed to allocate uid: %w", err)
+	}
+	registerDTO.UID = uid.String()
+
+	normalHash, err := HashPin(registerDTO.NormalPin)
+	if err != nil {
+		return "", dtos.RegisterDTO{}, fmt.Errorf("failed to hash normal pin: %w", err)
+	}
+	duressHash, err := HashPin(registerDTO.DuressPin)
+	if err != nil {
+		return "", dtos.RegisterDTO{}, fmt.Errorf("failed to hash duress pin: %w", err)
+	}
+	registerDTO.NormalPinHash = normalHash
+	registerDTO.DuressPinHash = duressHash
+	registerDTO.NormalPin = ""
+	registerDTO.DuressPin = ""
+
+	if err := repositories.SaveUser(registerDTO); err != nil {
 		log.Printf("Error saving user: %v", err)
 		return "", dtos.RegisterDTO{}, err
 	}
 
-	log.Printf("User saved successfully: %+v", registerDTO)
-	return "User registered successfully", registerDTO, nil // Return the DTO with the generated username
+	log.Printf("User saved successfully: %s", registerDTO.Username)
+	// Never echo PIN material back to the caller.
+	response := registerDTO
+	response.NormalPinHash = ""
+	response.DuressPinHash = ""
+	return "User registered successfully", response, nil
 }

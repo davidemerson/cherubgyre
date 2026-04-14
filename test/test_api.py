@@ -1,305 +1,329 @@
+"""
+End-to-end integration tests for cherubgyre.
+
+The server is expected to be running on http://localhost:8080 with a fresh
+working directory (no users.json / followers.json / duress.json in place).
+
+Run locally:
+    JWT_SECRET=$(openssl rand -hex 32) ADMIN_TOKEN=$(openssl rand -hex 32) \
+        ./cherubgyre &
+    pytest test/test_api.py -v
+
+Override the base URL or admin token via environment variables:
+    BASE_URL=http://localhost:8080 ADMIN_TOKEN=... pytest test/test_api.py -v
+"""
+
+import datetime
+import os
+import re
+import uuid
+
 import pytest
 import requests
-import random
-import string
-import datetime
-from datetime import timezone # Added for UTC
 
-BASE_URL = "http://localhost:8080" # Assuming the app runs locally on port 8080
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:8080")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "ci-test-admin-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+MASTER_INVITE = "4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2"
 
-# --- Helper Functions ---
+USERNAME_RE = re.compile(r"^[a-z]+-[a-z]+-[a-z]+$")
 
-def random_string(length=10):
-    """Generate a random string."""
-    return ''.join(random.choice(string.ascii_lowercase) for i in range(length))
 
-def register_user(username, password, email, normal_pin, duress_pin, invite_code=None):
-    """Helper to register a user."""
-    payload = {
-        "username": username, 
-        "password": password, 
-        "email": email,
-        "normal_pin": normal_pin,
-        "duress_pin": duress_pin
-    }
-    if invite_code:
-        payload["invite_code"] = invite_code
-    return requests.post(f"{BASE_URL}/register", json=payload)
+# --- Helpers ---------------------------------------------------------------
 
-def login_user(username, pin):
-    """Helper to log in a user and return the response."""
+
+def register(normal_pin="1234", duress_pin="9876", invite=MASTER_INVITE):
+    body = {"normal_pin": normal_pin, "duress_pin": duress_pin, "invite_code": invite}
+    return requests.post(f"{BASE_URL}/register", json=body)
+
+
+def login(username, pin):
     return requests.post(f"{BASE_URL}/login", json={"username": username, "pin": pin})
 
-# --- Fixtures ---
 
-@pytest.fixture(scope="module")
-def registered_user1():
-    """Register and provide user1 credentials and token."""
-    username = f"testuser1_{random_string(5)}"
-    email = f"{username}@example.com"
-    normal_pin = "1234"
-    duress_pin = "9876"
-    response = register_user(username, "password123", email, normal_pin, duress_pin)
-    print(response.status_code)
-    print(response.text)
-    assert response.status_code == 200 or response.status_code == 201
-    
-    login_resp = login_user(username, normal_pin)
-    assert login_resp.status_code == 200
-    token = login_resp.json().get("token")
-    assert token is not None
-    return {"username": username, "password": "password123", "email": email, "token": f"Bearer {token}", "normal_pin": normal_pin, "duress_pin": duress_pin}
-
-@pytest.fixture(scope="module")
-def registered_user2():
-    """Register and provide user2 credentials and token."""
-    username = f"testuser2_{random_string(5)}"
-    email = f"{username}@example.com"
-    normal_pin = "1111"
-    duress_pin = "9999"
-    response = register_user(username, "password456", email, normal_pin, duress_pin)
-    assert response.status_code == 200 or response.status_code == 201
-    
-    login_resp = login_user(username, normal_pin)
-    assert login_resp.status_code == 200
-    token = login_resp.json().get("token")
-    assert token is not None
-    return {"username": username, "password": "password456", "email": email, "token": f"Bearer {token}", "normal_pin": normal_pin, "duress_pin": duress_pin}
+def bearer(token):
+    return {"Authorization": f"Bearer {token}"}
 
 
-# --- Test Classes ---
+def fresh_user(normal_pin="1234", duress_pin="9876", invite=MASTER_INVITE):
+    """Register + normal login. Returns (username, token, normal_pin, duress_pin)."""
+    r = register(normal_pin, duress_pin, invite)
+    assert r.status_code in (200, 201), r.text
+    username = r.json()["user"]["username"]
+    lr = login(username, normal_pin)
+    assert lr.status_code == 200, lr.text
+    return username, lr.json()["token"], normal_pin, duress_pin
+
+
+def duress_user(normal_pin="1234", duress_pin="9876", invite=MASTER_INVITE):
+    """Register, then login with the DURESS PIN. Returns (username, duress_token)."""
+    r = register(normal_pin, duress_pin, invite)
+    assert r.status_code in (200, 201), r.text
+    username = r.json()["user"]["username"]
+    lr = login(username, duress_pin)
+    assert lr.status_code == 200, lr.text
+    return username, lr.json()["token"], normal_pin, duress_pin
+
+
+# --- System ----------------------------------------------------------------
+
 
 class TestSystem:
-    def test_health_check(self):
-        """Test the health check endpoint."""
-        response = requests.get(f"{BASE_URL}/health")
-        assert response.status_code == 200
-        # Assuming plain text or simple JSON response
-        # assert "OK" in response.text or response.json().get("status") == "OK"
+    def test_health(self):
+        assert requests.get(f"{BASE_URL}/health").status_code == 200
 
-    def test_root_endpoint(self):
-        """Test the root endpoint."""
-        response = requests.get(f"{BASE_URL}/")
-        assert response.status_code == 200
-        assert "You've reached cherubgyre" in response.text
+    def test_root(self):
+        r = requests.get(f"{BASE_URL}/")
+        assert r.status_code == 200
+        assert "cherubgyre" in r.text
 
 
-class TestAuthAndUser:
-    def test_register_duplicate_user(self, registered_user1):
-        """Test registering a user with an existing username."""
-        # Attempt with duplicate username
-        response = register_user(registered_user1['username'], "newpass", "diff@example.com", "5555", "6666")
-        # Expecting 500 based on current error handling for duplicate username
-        assert response.status_code == 500 
-
-    def test_login_invalid_credentials(self, registered_user1):
-        """Test login with incorrect pin."""
-        response = login_user(registered_user1['username'], "wrongpin")
-        assert response.status_code == 401 # Unauthorized
-
-    def test_get_profile_success(self, registered_user1):
-        """Test getting user profile successfully."""
-        headers = {"Authorization": registered_user1['token']}
-        response = requests.get(f"{BASE_URL}/profile", headers=headers)
-        assert response.status_code == 200
-        assert response.text == "Token is valid" # Changed from response.json()
-        # profile_data = response.json() # Removed
-        # assert profile_data['username'] == registered_user1['username'] # Removed
-        # Add more assertions based on expected profile structure
-
-    def test_get_profile_unauthorized(self):
-        """Test getting profile without authentication."""
-        response = requests.get(f"{BASE_URL}/profile")
-        assert response.status_code == 401 # Unauthorized
-
-    def test_invitation_flow(self, registered_user1):
-        """Test the user invitation flow."""
-        # User1 generates an invite code
-        headers1 = {"Authorization": registered_user1['token']}
-        invite_resp = requests.get(f"{BASE_URL}/invite", headers=headers1)
-        assert invite_resp.status_code == 200
-        invite_code = invite_resp.json().get("inviteCode") # Changed from invite_code
-        assert invite_code is not None
-
-        # Register user3 using the invite code
-        username3 = f"testuser3_{random_string(5)}"
-        password3 = "password789"
-        email3 = f"{username3}@example.com"
-        normal_pin3 = "2222"
-        duress_pin3 = "3333"
-        reg_resp = register_user(username3, password3, email3, normal_pin3, duress_pin3, invite_code=invite_code)
-        assert reg_resp.status_code == 200 or reg_resp.status_code == 201
-
-        # Verify user3 can log in
-        login_resp3 = login_user(username3, normal_pin3)
-        assert login_resp3.status_code == 200
-        token3 = login_resp3.json().get("token")
-        assert token3 is not None
-        
-        # Store user3 info for later tests if needed within this class/module
-        pytest.user3_data = {"username": username3, "password": password3, "email": email3, "token": f"Bearer {token3}", "normal_pin": normal_pin3, "duress_pin": duress_pin3}
+# --- Registration & username format ---------------------------------------
 
 
-class TestSocialFeatures:
+class TestRegistration:
+    def test_register_with_master_code(self):
+        r = register()
+        assert r.status_code in (200, 201), r.text
+        body = r.json()
+        assert "user" in body
+        username = body["user"]["username"]
+        assert USERNAME_RE.match(username), f"username does not match spec format: {username}"
+        # PIN material must not be echoed back.
+        for leak in ("normal_pin", "duress_pin", "normal_pin_hash", "duress_pin_hash"):
+            assert not body["user"].get(leak), f"response leaked {leak}"
 
-    @pytest.fixture(autouse=True)
-    def user3(self, registered_user1):
-         # Ensure user3 exists from the invitation flow for these tests
-         # This relies on TestAuthAndUser running first or having user3_data populated
-         if not hasattr(pytest, 'user3_data'):
-             pytest.skip("User3 data not available, skipping social tests dependent on invite flow")
-         return pytest.user3_data
+    def test_register_requires_pin_min_length(self):
+        r = register(normal_pin="12", duress_pin="1234")
+        assert r.status_code >= 400
 
-    def test_follow_user(self, registered_user1, registered_user2):
-        """Test user2 following user1."""
-        headers2 = {"Authorization": registered_user2['token']}
-        response = requests.post(f"{BASE_URL}/follow/{registered_user1['username']}", headers=headers2)
-        assert response.status_code == 200 or response.status_code == 204 # OK or No Content
+    def test_register_rejects_matching_pins(self):
+        r = register(normal_pin="1234", duress_pin="1234")
+        assert r.status_code >= 400
 
-    def test_get_followers(self, registered_user1, registered_user2, user3):
-        """Test getting followers list."""
-        # User2 follows user1 (from previous test)
-        # User3 follows user1
-        headers3 = {"Authorization": user3['token']}
-        response_follow = requests.post(f"{BASE_URL}/follow/{registered_user1['username']}", headers=headers3)
-        assert response_follow.status_code == 200 or response_follow.status_code == 204
+    def test_register_rejects_bad_invite(self):
+        r = register(invite="00000000-0000-0000-0000-000000000000")
+        assert r.status_code >= 400
 
-        # Get user1's followers 
-        headers1 = {"Authorization": registered_user1['token']}
-        response = requests.get(f"{BASE_URL}/followers/{registered_user1['username']}", headers=headers1)
-        assert response.status_code == 200
-        followers_list = response.json() # Response is directly a list of strings
-        assert isinstance(followers_list, list)
-        # Process list of strings directly
-        assert registered_user2['username'] in followers_list
-        assert user3['username'] in followers_list
-        assert len(followers_list) >= 2 
-
-    def test_unfollow_user(self, registered_user1, registered_user2):
-        """Test user2 unfollowing user1."""
-        headers2 = {"Authorization": registered_user2['token']}
-        # Ensure user2 is following user1 first (might have happened in previous tests)
-        requests.post(f"{BASE_URL}/follow/{registered_user1['username']}", headers=headers2)
-
-        # Unfollow
-        response = requests.post(f"{BASE_URL}/unfollow/{registered_user1['username']}", headers=headers2)
-        assert response.status_code == 200 or response.status_code == 204
-
-        # Verify by getting followers again
-        headers1 = {"Authorization": registered_user1['token']}
-        response_followers = requests.get(f"{BASE_URL}/followers/{registered_user1['username']}", headers=headers1)
-        assert response_followers.status_code == 200
-        followers_list = response_followers.json() # Response is directly a list of strings
-        assert isinstance(followers_list, list)
-        # Process list of strings directly
-        assert registered_user2['username'] not in followers_list
-
-    def test_follow_nonexistent_user(self, registered_user1):
-        """Test following a user that does not exist."""
-        headers1 = {"Authorization": registered_user1['token']}
-        non_existent_user = f"nonexistent_{random_string()}"
-        response = requests.post(f"{BASE_URL}/follow/{non_existent_user}", headers=headers1)
-        # API currently returns 200 OK instead of 404 - adjusting test to match
-        assert response.status_code == 200 
+    def test_validate_invite_master(self):
+        r = requests.post(f"{BASE_URL}/validate-invite", json={"invite_code": MASTER_INVITE})
+        assert r.status_code == 200
+        assert r.json().get("valid") is True
 
 
-    def test_ban_non_follower(self, registered_user1, registered_user2):
-         """Test banning a user who is not currently a follower."""
-         headers1 = {"Authorization": registered_user1['token']}
-         # Ensure user2 is NOT following user1 (unfollowed in previous test)
-         
-         ban_payload = {"username": registered_user2['username']}
-         response = requests.delete(f"{BASE_URL}/followers/{registered_user1['username']}", headers=headers1, json=ban_payload)
-         # API currently returns 200 OK instead of error - adjusting test to match
-         assert response.status_code == 200 
+# --- Login -----------------------------------------------------------------
 
 
-class TestDuressSystem:
-    def test_duress_signal_and_cancel(self, registered_user2):
-        """Test posting and cancelling a duress signal."""
-        headers2 = {"Authorization": registered_user2['token']}
-        # Updated duress_payload to match DuressRequest struct
-        duress_payload = {
-            "duress_type": "location_ping",
-            "message": "Testing duress signal",
-            # Use timezone-aware UTC time
-            "timestamp": datetime.datetime.now(timezone.utc).isoformat(), 
-            "additional_data": {
-                "latitude": 40.7128, 
-                "longitude": -74.0060
-            }
+class TestLogin:
+    def test_login_success(self):
+        username, token, _, _ = fresh_user()
+        assert isinstance(token, str) and token
+
+    def test_login_wrong_pin_is_opaque(self):
+        username, _, _, _ = fresh_user()
+        r = login(username, "0000")
+        assert r.status_code == 401
+
+    def test_login_unknown_user_is_opaque(self):
+        # Unknown-user and wrong-pin must return identical responses so an
+        # attacker cannot enumerate the username space via /login.
+        r1 = login("no-such-user-xyz", "1234")
+        username, _, _, _ = fresh_user()
+        r2 = login(username, "0000")
+        assert r1.status_code == r2.status_code == 401
+        assert r1.text.strip() == r2.text.strip()
+
+
+# --- Profile + duress mode dummy data -------------------------------------
+
+
+class TestProfileDuress:
+    def test_profile_real(self):
+        username, token, _, _ = fresh_user()
+        r = requests.get(f"{BASE_URL}/profile", headers=bearer(token))
+        assert r.status_code == 200
+        body = r.json()
+        assert body["username"] == username
+        assert "avatar" in body
+
+    def test_profile_unauthenticated(self):
+        r = requests.get(f"{BASE_URL}/profile")
+        assert r.status_code == 401
+
+    def test_profile_duress_returns_fake_data(self):
+        username, dtoken, _, _ = duress_user()
+        r = requests.get(f"{BASE_URL}/profile", headers=bearer(dtoken))
+        assert r.status_code == 200
+        body = r.json()
+        # In duress mode the real username must not be returned.
+        assert body["username"] != username
+        # But it should still look like a real cherubgyre username so a
+        # coercer cannot spot it as fake.
+        assert "avatar" in body
+
+    def test_duress_profile_is_stable_per_user(self):
+        _, dtoken, _, _ = duress_user()
+        a = requests.get(f"{BASE_URL}/profile", headers=bearer(dtoken)).json()
+        b = requests.get(f"{BASE_URL}/profile", headers=bearer(dtoken)).json()
+        assert a == b, "duress-mode profile must be stable across requests"
+
+    def test_duress_profile_differs_between_users(self):
+        _, d1, _, _ = duress_user()
+        _, d2, _, _ = duress_user()
+        a = requests.get(f"{BASE_URL}/profile", headers=bearer(d1)).json()
+        b = requests.get(f"{BASE_URL}/profile", headers=bearer(d2)).json()
+        assert a != b, "duress-mode profile must differ between real users"
+
+    def test_duress_followers_and_following(self):
+        _, dtoken, _, _ = duress_user()
+        rf = requests.get(f"{BASE_URL}/followers/ignored", headers=bearer(dtoken))
+        assert rf.status_code == 200
+        body = rf.json()
+        assert isinstance(body, list) and len(body) >= 1
+
+        rg = requests.get(f"{BASE_URL}/following", headers=bearer(dtoken))
+        assert rg.status_code == 200
+        assert isinstance(rg.json(), list)
+
+    def test_duress_invite_is_uuid_shaped(self):
+        _, dtoken, _, _ = duress_user()
+        r = requests.get(f"{BASE_URL}/invite", headers=bearer(dtoken))
+        assert r.status_code == 200
+        code = r.json()["inviteCode"]
+        uuid.UUID(code)  # raises if not a valid UUID
+
+
+# --- Follow graph ----------------------------------------------------------
+
+
+class TestFollowGraph:
+    def test_pending_accept_unfollow(self):
+        u1, t1, _, _ = fresh_user()
+        u2, t2, _, _ = fresh_user()
+
+        # u2 requests to follow u1.
+        r = requests.post(f"{BASE_URL}/follow/{u1}", headers=bearer(t2))
+        assert r.status_code == 200
+
+        # u1 sees the pending request.
+        r = requests.get(f"{BASE_URL}/follow/requests", headers=bearer(t1))
+        assert r.status_code == 200
+        assert any(entry.get("username") == u2 for entry in (r.json() or []))
+
+        # u1 accepts.
+        r = requests.post(f"{BASE_URL}/follow/accept/{u2}", headers=bearer(t1))
+        assert r.status_code == 200
+
+        # u1's followers list includes u2.
+        r = requests.get(f"{BASE_URL}/followers/{u1}", headers=bearer(t1))
+        assert r.status_code == 200
+        assert any(entry.get("username") == u2 for entry in (r.json() or []))
+
+        # u2 unfollows.
+        r = requests.post(f"{BASE_URL}/unfollow/{u1}", headers=bearer(t2))
+        assert r.status_code == 200
+        r = requests.get(f"{BASE_URL}/followers/{u1}", headers=bearer(t1))
+        assert not any(entry.get("username") == u2 for entry in (r.json() or []))
+
+
+# --- Duress signals --------------------------------------------------------
+
+
+class TestDuressSignals:
+    def _post_duress(self, token, duress_pin):
+        body = {
+            "duress_type": "manual",
+            "message": "test",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "additional_data": {"lat": 0, "lon": 0},
+            "duress_pin": duress_pin,
         }
+        return requests.post(f"{BASE_URL}/duress", headers=token, json=body)
 
-        # Post duress signal
-        response_post = requests.post(f"{BASE_URL}/duress", headers=headers2, json=duress_payload)
-        # Assuming 200 for successful post based on controller
-        assert response_post.status_code == 200 
-        assert response_post.json().get("message") == "Duress posted successfully"
+    def test_post_and_cancel(self):
+        u, t, normal, duress = fresh_user()
+        r = self._post_duress(bearer(t), duress)
+        assert r.status_code == 200, r.text
 
-        # Check duress map (assuming requires auth, using user2's token)
-        response_map_after_post = requests.get(f"{BASE_URL}/users/map", headers=headers2)
-        assert response_map_after_post.status_code == 200
-        # This assertion remains a potential failure point if the map structure is different
-        # For now, assuming it's a list of objects, and one of them represents registered_user2
-        # We might need to inspect the actual response of GetDuressMap if this fails
-        duress_map_data = response_map_after_post.json() 
-        # Let's be more flexible: check if any entry in the map might correspond to the user
-        # This is a broad check; specific structure would be better if known.
-        found_user_in_map = False
-        if isinstance(duress_map_data, list): # Assuming it's a list of users under duress
-            for item in duress_map_data:
-                if isinstance(item, dict) and item.get("username") == registered_user2['username']:
-                     found_user_in_map = True
-                     break
-        elif isinstance(duress_map_data, dict): # Or maybe a dict with usernames as keys?
-            if registered_user2['username'] in duress_map_data:
-                found_user_in_map = True
-        
-        assert found_user_in_map, f"User {registered_user2['username']} not found in duress map after posting. Map: {duress_map_data}"
+        r = requests.get(f"{BASE_URL}/users/map", headers=bearer(t))
+        assert r.status_code == 200
+        assert u in (r.json() or {})
 
-        # Cancel duress signal
-        response_cancel = requests.post(f"{BASE_URL}/duress/cancel", headers=headers2)
-        assert response_cancel.status_code == 200 # Assuming 200 for successful cancel
-        assert response_cancel.json().get("message") == "Duress canceled successfully"
+        # Cancel requires the NORMAL PIN in the body (per spec).
+        r = requests.post(
+            f"{BASE_URL}/duress/cancel", headers=bearer(t), json={"pin": normal}
+        )
+        assert r.status_code == 200, r.text
 
-        # Check duress map again
-        response_map_after_cancel = requests.get(f"{BASE_URL}/users/map", headers=headers2)
-        assert response_map_after_cancel.status_code == 200
-        duress_map_after_cancel_data = response_map_after_cancel.json()
-        
-        still_found_user_in_map = False
-        if isinstance(duress_map_after_cancel_data, list):
-            for item in duress_map_after_cancel_data:
-                if isinstance(item, dict) and item.get("username") == registered_user2['username']:
-                     still_found_user_in_map = True
-                     break
-        elif isinstance(duress_map_after_cancel_data, dict):
-             if registered_user2['username'] in duress_map_after_cancel_data:
-                still_found_user_in_map = True
+        r = requests.get(f"{BASE_URL}/users/map", headers=bearer(t))
+        assert r.status_code == 200
+        assert u not in (r.json() or {})
 
-        assert not still_found_user_in_map, f"User {registered_user2['username']} still found in duress map after cancel. Map: {duress_map_after_cancel_data}"
+    def test_cancel_rejects_duress_pin(self):
+        u, t, normal, duress = fresh_user()
+        assert self._post_duress(bearer(t), duress).status_code == 200
 
-    def test_duress_unauthorized(self):
-        """Test duress endpoints without authentication."""
-        duress_payload = { # Use the correct payload structure
-            "duress_type": "location_ping",
-            "message": "Testing duress signal unauth",
-             # Use timezone-aware UTC time
-            "timestamp": datetime.datetime.now(timezone.utc).isoformat(),
-            "additional_data": {"latitude": 40.7128, "longitude": -74.0060}
+        # Cancelling with the DURESS pin must fail — otherwise a coercer
+        # holding the duress-mode session could clear the silent alert.
+        r = requests.post(
+            f"{BASE_URL}/duress/cancel", headers=bearer(t), json={"pin": duress}
+        )
+        assert r.status_code == 401
+
+    def test_post_requires_duress_pin(self):
+        _, t, _, _ = fresh_user()
+        r = self._post_duress(bearer(t), "0000")
+        assert r.status_code == 401
+
+    def test_post_requires_auth(self):
+        body = {
+            "duress_type": "manual",
+            "message": "test",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "additional_data": {},
+            "duress_pin": "9876",
         }
-        
-        response_post = requests.post(f"{BASE_URL}/duress", json=duress_payload)
-        assert response_post.status_code == 500 # Expecting 500 based on controller logic
+        assert requests.post(f"{BASE_URL}/duress", json=body).status_code == 401
+        assert requests.post(f"{BASE_URL}/duress/cancel", json={"pin": "x"}).status_code == 401
+        assert requests.get(f"{BASE_URL}/users/map").status_code == 401
 
-        response_cancel = requests.post(f"{BASE_URL}/duress/cancel")
-        assert response_cancel.status_code == 500 # Expecting 500 based on controller logic
+    def test_duress_rate_limit_one_per_hour(self):
+        _, t, _, duress = fresh_user()
+        assert self._post_duress(bearer(t), duress).status_code == 200
+        r = self._post_duress(bearer(t), duress)
+        assert r.status_code == 429
 
-        response_map = requests.get(f"{BASE_URL}/users/map")
-        assert response_map.status_code == 500 # Expecting 500 based on controller logic
+    def test_silent_duress_on_duress_login(self):
+        u, dtoken, _, _ = duress_user()
+        # A duress-PIN login must automatically create a silent duress
+        # signal visible via /users/map, even without a POST /duress.
+        r = requests.get(f"{BASE_URL}/users/map", headers=bearer(dtoken))
+        assert r.status_code == 200
+        # The duress-mode session sees its own map via the real code path,
+        # so the user's own signal should be present.
+        assert u in (r.json() or {})
 
-# --- To run these tests ---
-# 1. Make sure the Go application is running on http://localhost:8080
-# 2. Ensure you have Python, pip, pytest, and requests installed.
-# 3. Run `pip install -r requirements.txt`
-# 4. Run `pytest test_api.py` in your terminal in the project directory. 
+
+# --- Admin endpoint --------------------------------------------------------
+
+
+class TestAdmin:
+    def test_admin_requires_token(self):
+        u, _, _, _ = fresh_user()
+        r = requests.delete(f"{BASE_URL}/admin/users/{u}")
+        assert r.status_code == 401
+
+    def test_admin_rejects_wrong_token(self):
+        u, _, _, _ = fresh_user()
+        r = requests.delete(
+            f"{BASE_URL}/admin/users/{u}", headers={"X-Admin-Token": "bogus"}
+        )
+        assert r.status_code == 401
+
+    def test_admin_deregister_with_valid_token(self):
+        u, _, _, _ = fresh_user()
+        r = requests.delete(
+            f"{BASE_URL}/admin/users/{u}", headers={"X-Admin-Token": ADMIN_TOKEN}
+        )
+        assert r.status_code == 200
+        # Subsequent login must fail (user is gone).
+        assert login(u, "1234").status_code == 401

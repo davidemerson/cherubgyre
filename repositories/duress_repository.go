@@ -1,9 +1,7 @@
 package repositories
 
 import (
-	"encoding/json"
 	"log"
-	"os"
 	"time"
 )
 
@@ -15,31 +13,36 @@ type Duress struct {
 	AdditionalData map[string]interface{} `json:"additional_data"`
 }
 
+var duressStore = newFileStore("duress.json")
+
+func loadDuresses() ([]Duress, error) {
+	var duresses []Duress
+	if err := duressStore.load(&duresses); err != nil {
+		return nil, err
+	}
+	return duresses, nil
+}
+
+// SaveDuress enforces the per-user invariant that there is at most one
+// active duress signal. Any pre-existing signal for the same user is
+// dropped before the new one is appended.
 func SaveDuress(username, duressType, message string, timestamp time.Time, additionalData map[string]interface{}) error {
 	log.Printf("Saving duress for user: %s", username)
-	file, err := os.OpenFile("duress.json", os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		log.Printf("Error opening file: %v", err)
-		return err
-	}
-	defer file.Close()
+	duressStore.mu.Lock()
+	defer duressStore.mu.Unlock()
 
 	var duresses []Duress
-	if err := json.NewDecoder(file).Decode(&duresses); err != nil && err.Error() != "EOF" {
-		log.Printf("Error decoding duress data: %v", err)
+	if err := duressStore.loadLocked(&duresses); err != nil {
 		return err
 	}
 
-	// Remove any existing duress signals for this user
-	var filteredDuresses []Duress
+	filtered := make([]Duress, 0, len(duresses))
 	for _, d := range duresses {
 		if d.Username != username {
-			filteredDuresses = append(filteredDuresses, d)
+			filtered = append(filtered, d)
 		}
 	}
-	duresses = filteredDuresses
-
-	duresses = append(duresses, Duress{
+	filtered = append(filtered, Duress{
 		Username:       username,
 		DuressType:     duressType,
 		Message:        message,
@@ -47,110 +50,74 @@ func SaveDuress(username, duressType, message string, timestamp time.Time, addit
 		AdditionalData: additionalData,
 	})
 
-	file.Seek(0, 0)
-	file.Truncate(0)
-
-	if err := json.NewEncoder(file).Encode(duresses); err != nil {
-		log.Printf("Error encoding duress data: %v", err)
-		return err
-	}
-
-	log.Printf("Successfully saved duress for user: %s", username)
-	return nil
+	return duressStore.saveLocked(filtered)
 }
 
 func DeleteDuress(username string) error {
 	log.Printf("Deleting duress for user: %s", username)
-	file, err := os.OpenFile("duress.json", os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		log.Printf("Error opening file: %v", err)
-		return err
-	}
-	defer file.Close()
+	duressStore.mu.Lock()
+	defer duressStore.mu.Unlock()
 
 	var duresses []Duress
-	if err := json.NewDecoder(file).Decode(&duresses); err != nil && err.Error() != "EOF" {
-		log.Printf("Error decoding duress data: %v", err)
+	if err := duressStore.loadLocked(&duresses); err != nil {
 		return err
 	}
 
-	var newDuresses []Duress
-	for _, duress := range duresses {
-		if duress.Username != username {
-			newDuresses = append(newDuresses, duress)
+	kept := make([]Duress, 0, len(duresses))
+	for _, d := range duresses {
+		if d.Username != username {
+			kept = append(kept, d)
 		}
 	}
-	duresses = newDuresses
 
-	file.Seek(0, 0)
-	file.Truncate(0)
-
-	if err := json.NewEncoder(file).Encode(duresses); err != nil {
-		log.Printf("Error encoding duress data: %v", err)
-		return err
-	}
-
-	log.Printf("Successfully deleted duress for user: %s", username)
-	return nil
+	return duressStore.saveLocked(kept)
 }
 
-func GetDuressMap(username string) (map[string]interface{}, error) {
-	log.Printf("Getting duress map for user: %s", username)
-	file, err := os.OpenFile("duress.json", os.O_RDONLY|os.O_CREATE, 0644)
+// GetMyDuress returns the caller's own active duress signal (if any).
+// Replaces the legacy GetDuressMap which returned a 1-entry map.
+func GetMyDuress(username string) (*Duress, error) {
+	duresses, err := loadDuresses()
 	if err != nil {
-		log.Printf("Error opening file: %v", err)
 		return nil, err
 	}
-	defer file.Close()
-
-	var duresses []Duress
-	if err := json.NewDecoder(file).Decode(&duresses); err != nil && err.Error() != "EOF" {
-		log.Printf("Error decoding duress data: %v", err)
-		return nil, err
-	}
-
-	duressMap := make(map[string]interface{})
-	for _, duress := range duresses {
-		if duress.Username == username {
-			duressMap[duress.Username] = duress
+	for i := range duresses {
+		if duresses[i].Username == username {
+			d := duresses[i]
+			return &d, nil
 		}
 	}
+	return nil, nil
+}
 
-	log.Printf("Successfully retrieved duress map for user: %s", username)
-	return duressMap, nil
+// GetDuressMap remains for backwards compatibility with the existing
+// /users/map route. Wraps GetMyDuress in the legacy shape.
+func GetDuressMap(username string) (map[string]interface{}, error) {
+	d, err := GetMyDuress(username)
+	if err != nil {
+		return nil, err
+	}
+	if d == nil {
+		return map[string]interface{}{}, nil
+	}
+	return map[string]interface{}{d.Username: *d}, nil
 }
 
 func GetActiveDuressForUsers(usernames []string) ([]Duress, error) {
-	log.Printf("Getting active duress for users: %v", usernames)
-	file, err := os.OpenFile("duress.json", os.O_RDONLY|os.O_CREATE, 0644)
+	duresses, err := loadDuresses()
 	if err != nil {
-		log.Printf("Error opening file: %v", err)
-		return nil, err
-	}
-	defer file.Close()
-
-	var duresses []Duress
-	if err := json.NewDecoder(file).Decode(&duresses); err != nil && err.Error() != "EOF" {
-		log.Printf("Error decoding duress data: %v", err)
 		return nil, err
 	}
 
-	var activeDuresses []Duress
-	for _, duress := range duresses {
-		if contains(usernames, duress.Username) {
-			activeDuresses = append(activeDuresses, duress)
-		}
+	want := make(map[string]struct{}, len(usernames))
+	for _, u := range usernames {
+		want[u] = struct{}{}
 	}
 
-	log.Printf("Successfully retrieved %d active duress signals", len(activeDuresses))
-	return activeDuresses, nil
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
+	var active []Duress
+	for _, d := range duresses {
+		if _, ok := want[d.Username]; ok {
+			active = append(active, d)
 		}
 	}
-	return false
+	return active, nil
 }

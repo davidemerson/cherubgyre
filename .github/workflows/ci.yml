@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.24"
+
+jobs:
+  build:
+    name: Build & Vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: go test -race
+        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: ignore
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  gosec:
+    name: gosec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: securego/gosec@master
+        with:
+          args: -exclude-dir=test ./...
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: pip install pytest requests
+      - name: Build server
+        run: go build -o cherubgyre-test ./
+      - name: Run server in background
+        env:
+          JWT_SECRET: ci-test-secret-must-be-at-least-32-bytes-long-xxxxxxxx
+          ADMIN_TOKEN: ci-test-admin-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          PORT: "8080"
+          LOGIN_RATE_LIMIT: "1000"
+          LOGIN_RATE_WINDOW_SECONDS: "60"
+        run: |
+          mkdir -p "$RUNNER_TEMP/cherubgyre-data"
+          cd "$RUNNER_TEMP/cherubgyre-data"
+          "$GITHUB_WORKSPACE/cherubgyre-test" > server.log 2>&1 &
+          echo "SERVER_PID=$!" >> $GITHUB_ENV
+          echo "SERVER_LOG=$RUNNER_TEMP/cherubgyre-data/server.log" >> $GITHUB_ENV
+      - name: Wait for server
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/health > /dev/null; then
+              echo "Server ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server did not start in time"
+          cat "$SERVER_LOG" || true
+          exit 1
+      - name: Run pytest integration suite
+        env:
+          ADMIN_TOKEN: ci-test-admin-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        run: pytest test/test_api.py -v
+      - name: Stop server
+        if: always()
+        run: kill "$SERVER_PID" || true
+      - name: Upload server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log
+          path: ${{ env.SERVER_LOG }}
+          if-no-files-found: ignore

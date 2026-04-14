@@ -1,6 +1,9 @@
 
 # cherubgyre
 
+[![CI](https://github.com/davidemerson/cherubgyre/actions/workflows/ci.yml/badge.svg)](https://github.com/davidemerson/cherubgyre/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/davidemerson/cherubgyre/actions/workflows/codeql.yml/badge.svg)](https://github.com/davidemerson/cherubgyre/actions/workflows/codeql.yml)
+
 **cherubgyre** is an anonymous community defense social network designed to facilitate secure and private interactions among users. The backend is implemented in Go and is containerized for seamless deployment.
 
 ## 🌐 Live Deployment
@@ -39,9 +42,22 @@ For local development and testing:
 ```bash
 git clone https://github.com/davidemerson/cherubgyre.git
 cd cherubgyre
-GOOS=linux GOARCH=amd64 go build -o main main.go
-./main
+go build -o cherubgyre ./
+export JWT_SECRET="$(openssl rand -hex 32)"
+export ADMIN_TOKEN="$(openssl rand -hex 32)"
+./cherubgyre
 ```
+
+### Required environment variables
+
+| Variable                     | Required | Purpose                                                                  |
+|------------------------------|----------|--------------------------------------------------------------------------|
+| `JWT_SECRET`                 | **yes**  | Signing key for JWTs. Must be ≥32 bytes. No default.                      |
+| `ADMIN_TOKEN`                | **yes**  | Shared secret required as `X-Admin-Token` on `/admin/*`. ≥16 bytes.       |
+| `PORT`                       | no       | HTTP listen port. Defaults to `8080`.                                     |
+| `LOGIN_RATE_LIMIT`           | no       | Max `/login` attempts per IP per window. Default `10`.                    |
+| `LOGIN_RATE_WINDOW_SECONDS`  | no       | Sliding window for login rate limiting. Default `300`.                    |
+| `RUN_INACTIVITY_JOB`         | no       | Set to `false` to disable the daily 1-year inactivity deregistration job. |
 
 ---
 

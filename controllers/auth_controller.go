@@ -8,56 +8,41 @@ import (
 )
 
 func Login(w http.ResponseWriter, r *http.Request) {
+	if err := services.LoginLimiter.Allow(services.ClientIP(r)); err != nil {
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
+
 	var request dtos.LoginRequest
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
 	response, err := services.Login(request)
 	if err != nil {
-		// Pass the error message directly to the client
-		// This allows sending "X attempts remaining" or "Account locked" messages
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		// Single opaque error for every failure mode so the endpoint
+		// cannot be used to enumerate usernames or distinguish causes.
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
+// Profile returns the authenticated user's profile, or a seeded-random
+// dummy profile if the caller is in duress mode.
 func Profile(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
-	if token == "" {
-		http.Error(w, "Missing token", http.StatusUnauthorized)
-		return
-	}
+	p := Identity(r)
 
-	valid, err := services.ValidateToken(token)
-	if err != nil || !valid {
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	// Check if token is in duress mode
-	if services.IsDuressToken(token) {
-		// Return dummy profile data
-		response := map[string]interface{}{
-			"username": "gst_001",
-			"avatar":   "https://api.dicebear.com/7.x/identicon/svg?seed=gst_001&rowColor=000000",
-		}
+	if p.IsDuress {
+		dummy := services.GetDummyProfile(p.Username)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(dummy)
 		return
 	}
 
-	username, err := services.GetUsernameFromToken(token)
-	if err != nil {
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	user, err := services.GetUserProfile(username)
+	user, err := services.GetUserProfile(p.Username)
 	if err != nil {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
@@ -68,95 +53,69 @@ func Profile(w http.ResponseWriter, r *http.Request) {
 		"avatar":   user.Avatar,
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func ChangePin(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
-	if token == "" {
-		http.Error(w, "Missing token", http.StatusUnauthorized)
-		return
-	}
-
-	username, err := services.GetUsernameFromToken(token)
-	if err != nil {
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-		return
-	}
+	p := Identity(r)
 
 	var request struct {
 		CurrentPin string `json:"current_pin"`
 		NewPin     string `json:"new_pin"`
 	}
-
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if request.NewPin == "" || len(request.NewPin) < 4 { // Basic validation
-		http.Error(w, "New PIN must be at least 4 characters", http.StatusBadRequest)
+	if err := services.ValidatePin(request.NewPin); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	err = services.ChangePin(username, request.CurrentPin, request.NewPin)
-	if err != nil {
-		if err.Error() == "incorrect current pin" {
+	if err := services.ChangePin(p.Username, request.CurrentPin, request.NewPin); err != nil {
+		switch err.Error() {
+		case "incorrect current pin":
 			http.Error(w, err.Error(), http.StatusUnauthorized)
-		} else if err.Error() == "new pin cannot be the same as your duress pin" {
+		case "new pin cannot be the same as your duress pin":
 			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		default:
+			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "PIN changed successfully"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "PIN changed successfully"})
 }
 
 func ChangeDuressPin(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
-	if token == "" {
-		http.Error(w, "Missing token", http.StatusUnauthorized)
-		return
-	}
-
-	username, err := services.GetUsernameFromToken(token)
-	if err != nil {
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-		return
-	}
+	p := Identity(r)
 
 	var request struct {
 		CurrentPin string `json:"current_pin"`
 		NewPin     string `json:"new_pin"`
 	}
-
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if request.NewPin == "" || len(request.NewPin) < 4 { // Basic validation
-		http.Error(w, "New Duress PIN must be at least 4 characters", http.StatusBadRequest)
+	if err := services.ValidatePin(request.NewPin); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	err = services.ChangeDuressPin(username, request.CurrentPin, request.NewPin)
-	if err != nil {
-		if err.Error() == "incorrect current duress pin" {
+	if err := services.ChangeDuressPin(p.Username, request.CurrentPin, request.NewPin); err != nil {
+		switch err.Error() {
+		case "incorrect current duress pin":
 			http.Error(w, err.Error(), http.StatusUnauthorized)
-		} else if err.Error() == "new duress pin cannot be the same as your normal pin" {
+		case "new duress pin cannot be the same as your normal pin":
 			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		default:
+			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "Duress PIN changed successfully"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Duress PIN changed successfully"})
 }

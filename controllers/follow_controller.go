@@ -10,115 +10,88 @@ import (
 )
 
 func FollowUser(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 	vars := mux.Vars(r)
-	username := vars["username"]
+	target := vars["username"]
 
-	err := services.FollowUser(token, username)
-	if err != nil {
+	if err := services.FollowUser(p.Username, target); err != nil {
 		log.Printf("Error following user: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "Follow request sent successfully"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Follow request sent successfully"})
 }
 
 func AcceptFollow(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 	vars := mux.Vars(r)
-	username := vars["username"]
+	follower := vars["username"]
 
-	err := services.AcceptFollow(token, username)
-	if err != nil {
+	if err := services.AcceptFollow(p.Username, follower); err != nil {
 		log.Printf("Error accepting follower: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "Follower accepted successfully"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Follower accepted successfully"})
 }
 
 func DeclineFollow(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 	vars := mux.Vars(r)
-	username := vars["username"]
+	follower := vars["username"]
 
-	err := services.DeclineFollow(token, username)
-	if err != nil {
+	if err := services.DeclineFollow(p.Username, follower); err != nil {
 		log.Printf("Error declining follower: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "Follow request declined successfully"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Follow request declined successfully"})
 }
 
 func GetFollowRequests(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 
-	// Check if token is in duress mode
-	if services.IsDuressToken(token) {
-		// Return empty follow requests
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode([]interface{}{})
+	// Duress mode: empty list is believable (no one is requesting to
+	// follow you right now) and leaks no real follower graph data.
+	if p.IsDuress {
+		_ = json.NewEncoder(w).Encode([]interface{}{})
 		return
 	}
 
-	requests, err := services.GetFollowRequests(token)
+	requests, err := services.GetFollowRequests(p.Username)
 	if err != nil {
 		log.Printf("Error getting follow requests: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(requests)
+	_ = json.NewEncoder(w).Encode(requests)
 }
 
 func UnfollowUser(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 	vars := mux.Vars(r)
-	username := vars["username"]
+	target := vars["username"]
 
-	err := services.UnfollowUser(token, username)
-	if err != nil {
+	if err := services.UnfollowUser(p.Username, target); err != nil {
 		log.Printf("Error unfollowing user: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "User unfollowed successfully"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "User unfollowed successfully"})
 }
 
 func GetFollowers(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 	vars := mux.Vars(r)
 	username := vars["username"]
 
-	// Check if token is in duress mode
-	if services.IsDuressToken(token) {
-		// Return dummy followers
-		dummyFollowers := []map[string]interface{}{
-			{
-				"username": "abc_123",
-				"avatar":   "https://api.dicebear.com/7.x/identicon/svg?seed=abc_123&rowColor=000000",
-			},
-			{
-				"username": "xyz_456",
-				"avatar":   "https://api.dicebear.com/7.x/identicon/svg?seed=xyz_456&rowColor=000000",
-			},
-		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(dummyFollowers)
+	if p.IsDuress {
+		_ = json.NewEncoder(w).Encode(services.GetDummyFollowers(p.Username))
 		return
 	}
 
@@ -129,46 +102,37 @@ func GetFollowers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(followers)
+	_ = json.NewEncoder(w).Encode(followers)
 }
 
 func BanFollower(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 	vars := mux.Vars(r)
-	username := vars["username"]
+	target := vars["username"]
 
-	err := services.BanFollower(token, username)
-	if err != nil {
+	if err := services.BanFollower(p.Username, target); err != nil {
 		log.Printf("Error banning follower: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"message": "Follower banned successfully"}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Follower banned successfully"})
 }
 
 func GetFollowing(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
+	p := Identity(r)
 
-	// Check if token is in duress mode
-	if services.IsDuressToken(token) {
-		// Return dummy following list
-		dummyFollowing := []string{"def_789", "mno_234"}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(dummyFollowing)
+	if p.IsDuress {
+		_ = json.NewEncoder(w).Encode(services.GetDummyFollowing(p.Username))
 		return
 	}
 
-	following, err := services.GetFollowing(token)
+	following, err := services.GetFollowing(p.Username)
 	if err != nil {
 		log.Printf("Error getting following list: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(following)
+	_ = json.NewEncoder(w).Encode(following)
 }
