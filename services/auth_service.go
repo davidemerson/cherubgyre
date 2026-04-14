@@ -34,16 +34,27 @@ type Claims struct {
 // distinguish causes and enumerate the username space.
 var errInvalidCredentials = errors.New("invalid credentials")
 
-// MinPinLength is the minimum acceptable PIN length, applied uniformly to
-// registration, change-pin, and change-duress-pin. Kept as a package-level
-// constant so all three sites agree on the same rule.
-const MinPinLength = 4
+// MinPinLength / MaxPinLength bound the acceptable PIN length, applied
+// uniformly to registration, change-pin, change-duress-pin, and runtime
+// validation in ValidateUserCredentials. Kept as package-level constants
+// so all sites agree on the same rule.
+//
+// Max is 64 — well below bcrypt's 72-byte ceiling and far above any
+// human-typable PIN, so an attacker cannot force bcrypt to chew on a
+// huge buffer by sending a multi-megabyte "pin" field in a login body.
+const (
+	MinPinLength = 4
+	MaxPinLength = 64
+)
 
 // ValidatePin enforces the shared PIN policy. Today just a length check;
 // future rules (no sequential digits, no repeats, etc.) go here.
 func ValidatePin(pin string) error {
 	if len(pin) < MinPinLength {
 		return fmt.Errorf("PIN must be at least %d characters", MinPinLength)
+	}
+	if len(pin) > MaxPinLength {
+		return fmt.Errorf("PIN must be at most %d characters", MaxPinLength)
 	}
 	return nil
 }
@@ -67,16 +78,25 @@ func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 		user.FailedAttempts++
 		log.Printf("User %s failed attempt %d/10", user.Username, user.FailedAttempts)
 
-		if user.FailedAttempts >= 10 {
-			// Launch Lock: intentional per threat model. Deregister the user
-			// completely after 10 failed attempts.
-			log.Printf("User %s exceeded Launch Lock limit. Deregistering...", user.Username)
-			_ = DeregisterUser(user.Username, "Launch Lock (10 failed PIN attempts)")
-			return dtos.LoginResponse{}, errInvalidCredentials
+		// Persist the incremented counter BEFORE we decide whether to lock.
+		// If the write fails we must refuse the login without losing the
+		// counter — otherwise a disk-full condition defeats Launch Lock:
+		// the attacker keeps the counter at 0 forever.
+		if err := repositories.UpdateUser(user); err != nil {
+			log.Printf("CRITICAL: failed to persist failed-attempt counter for %s: %v", user.Username, err)
+			return dtos.LoginResponse{}, errors.New("server error")
 		}
 
-		if err := repositories.UpdateUser(user); err != nil {
-			log.Printf("Failed to persist failed-attempt counter: %v", err)
+		if user.FailedAttempts >= 10 {
+			// Launch Lock: intentional per threat model. Deregister the
+			// user completely after 10 failed attempts. If the deregister
+			// write itself fails we surface it so an operator notices,
+			// rather than returning a success-looking opaque error.
+			log.Printf("User %s exceeded Launch Lock limit. Deregistering...", user.Username)
+			if derr := DeregisterUser(user.Username, "Launch Lock (10 failed PIN attempts)"); derr != nil {
+				log.Printf("CRITICAL: Launch Lock deregister failed for %s: %v", user.Username, derr)
+				return dtos.LoginResponse{}, errors.New("server error")
+			}
 		}
 		return dtos.LoginResponse{}, errInvalidCredentials
 	}

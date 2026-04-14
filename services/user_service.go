@@ -2,6 +2,7 @@ package services
 
 import (
 	"cherubgyre/repositories"
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -116,24 +117,30 @@ func MigratePinHashes() error {
 	return nil
 }
 
-// CheckInactivity iterates through all users and deregisers those inactive for > 1 year
-func CheckInactivity() error {
+// CheckInactivity iterates through all users and deregisters those
+// inactive for > 1 year. Honors ctx cancellation between users so a
+// graceful-shutdown signal can interrupt a long sweep cleanly.
+func CheckInactivity(ctx context.Context) error {
 	log.Println("Starting inactivity check...")
 	users, err := repositories.GetAllUsers()
 	if err != nil {
 		return err
 	}
 
-	expirationDuration := 365 * 24 * time.Hour 
-	// expirationDuration := 2 * time.Minute // Debug mode
+	expirationDuration := 365 * 24 * time.Hour
 
 	for _, user := range users {
-		// If LastActive is zero (legacy users), maybe default to now? 
-		// Or if we want to be strict, we can't delete them yet. 
-		// Let's assume zero time means 'active now' for legacy migration purposes, 
-		// OR we ignore them until they login once.
+		select {
+		case <-ctx.Done():
+			log.Println("Inactivity check interrupted by shutdown")
+			return ctx.Err()
+		default:
+		}
+
+		// Legacy users with a zero LastActive are skipped until they
+		// log in once and get a real timestamp.
 		if user.LastActive.IsZero() {
-			continue 
+			continue
 		}
 
 		if time.Since(user.LastActive) > expirationDuration {
@@ -143,7 +150,7 @@ func CheckInactivity() error {
 			}
 		}
 	}
-	
+
 	log.Println("Inactivity check complete.")
 	return nil
 }

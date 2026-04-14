@@ -24,6 +24,46 @@ func sanitizeForLog(s string) string {
 	}, s)
 }
 
+// MaxBodyBytes wraps a handler so any read on the request body past n
+// bytes fails with an http.MaxBytesError. Callers' json.Decode invocations
+// then naturally return an error on oversized input; the helper below
+// translates that to 413.
+func MaxBodyBytes(n int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, n)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// MaxBodyBytesFunc is the http.HandlerFunc variant of MaxBodyBytes, for
+// per-route wrapping in main.go where we already use auth() wrappers.
+func MaxBodyBytesFunc(n int64, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, n)
+		next(w, r)
+	}
+}
+
+// SecurityHeaders sets conservative defense-in-depth response headers on
+// every response, regardless of handler. Applied globally in main.go so
+// even the static `/` and `/health` endpoints carry them. Values are
+// intentionally strict: this API never serves HTML, never wants to be
+// framed, never wants to be cached, and should always be TLS if a client
+// honors HSTS.
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // authCtxKey is unexported so callers must go through the helpers to read
 // identity off a request context.
 type authCtxKey struct{}

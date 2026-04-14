@@ -138,6 +138,32 @@ func BanFollower(followerID, followedID string) error {
 	return RemoveFollower(followerID, followedID)
 }
 
+// DeleteUserRelations removes every follower row where the given username
+// appears as either the follower or the followed party. Called when a user
+// is deregistered so that, if the username is later recycled by a new user
+// (per the wordlist space), the new user does not inherit the old user's
+// follower graph.
+func DeleteUserRelations(username string) error {
+	log.Printf("Purging follower relations for: %s", username)
+	followerStore.mu.Lock()
+	defer followerStore.mu.Unlock()
+
+	var relations []FollowerRelation
+	if err := followerStore.loadLocked(&relations); err != nil {
+		return err
+	}
+
+	kept := make([]FollowerRelation, 0, len(relations))
+	for _, r := range relations {
+		if r.Follower == username || r.Followed == username {
+			continue
+		}
+		kept = append(kept, r)
+	}
+
+	return followerStore.saveLocked(kept)
+}
+
 func GetFollowing(userID string) ([]string, error) {
 	relations, err := loadFollowers()
 	if err != nil {

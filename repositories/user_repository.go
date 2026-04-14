@@ -3,6 +3,7 @@ package repositories
 import (
 	"cherubgyre/dtos"
 	"errors"
+	"fmt"
 	"log"
 
 	"golang.org/x/crypto/bcrypt"
@@ -116,6 +117,13 @@ func GetUserByID(username string) (dtos.RegisterDTO, error) {
 //
 // Returns: 0 = no match, 1 = Normal PIN match, 2 = Duress PIN match.
 func ValidateUserCredentials(username, pin string) (int, error) {
+	// Bound the input length so an oversized pin cannot pass through to
+	// bcrypt.CompareHashAndPassword — cosmetic now that the HTTP body
+	// cap is 8 KiB on auth routes, but keeps the repository honest if
+	// someone adds a non-HTTP entry point later.
+	if len(pin) > 128 {
+		return 0, errors.New("invalid credentials")
+	}
 	user, err := GetUserByID(username)
 	if err != nil {
 		return 0, err
@@ -241,7 +249,16 @@ func MarkInviteCodeAsUsed(inviteCode string) error {
 	return nil
 }
 
+// DeleteUser removes the user record from users.json AND purges every
+// related entry from followers.json so that a recycled username cannot
+// inherit the old user's follower graph. The follower cleanup happens
+// first: if it fails, we haven't yet lost the user record, so a retry
+// can still succeed.
 func DeleteUser(username string) error {
+	if err := DeleteUserRelations(username); err != nil {
+		return fmt.Errorf("purge follower relations: %w", err)
+	}
+
 	userStore.mu.Lock()
 	defer userStore.mu.Unlock()
 
