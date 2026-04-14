@@ -5,7 +5,7 @@ import (
 	"cherubgyre/repositories"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -95,7 +95,10 @@ func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 		return dtos.LoginResponse{}, errors.New("server not configured")
 	}
 
-	log.Println("Login attempt for user:", request.Username)
+	// Debug-only: the login username ends up in the log stream whether
+	// the user exists or not, which undoes the opaque-error hardening
+	// if logs are readable by an attacker.
+	slog.Debug("login attempt", slog.String("user", request.Username))
 
 	user, err := repositories.GetUserByID(request.Username)
 	if err != nil {
@@ -107,14 +110,19 @@ func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 	pinType, err := repositories.ValidateUserCredentials(request.Username, request.PIN)
 	if err != nil || pinType == 0 {
 		user.FailedAttempts++
-		log.Printf("User %s failed attempt %d/10", user.Username, user.FailedAttempts)
+		slog.Warn("failed login attempt",
+			slog.String("user", user.Username),
+			slog.Int("attempts", user.FailedAttempts),
+			slog.Int("max", 10),
+		)
 
 		// Persist the incremented counter BEFORE we decide whether to lock.
 		// If the write fails we must refuse the login without losing the
 		// counter — otherwise a disk-full condition defeats Launch Lock:
 		// the attacker keeps the counter at 0 forever.
 		if err := repositories.UpdateUser(user); err != nil {
-			log.Printf("CRITICAL: failed to persist failed-attempt counter for %s: %v", user.Username, err)
+			slog.Error("critical: failed to persist failed-attempt counter",
+				slog.String("user", user.Username), slog.Any("err", err))
 			return dtos.LoginResponse{}, errors.New("server error")
 		}
 
@@ -123,9 +131,10 @@ func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 			// user completely after 10 failed attempts. If the deregister
 			// write itself fails we surface it so an operator notices,
 			// rather than returning a success-looking opaque error.
-			log.Printf("User %s exceeded Launch Lock limit. Deregistering...", user.Username)
+			slog.Warn("launch lock triggered", slog.String("user", user.Username))
 			if derr := DeregisterUser(user.Username, "Launch Lock (10 failed PIN attempts)"); derr != nil {
-				log.Printf("CRITICAL: Launch Lock deregister failed for %s: %v", user.Username, derr)
+				slog.Error("critical: launch lock deregister failed",
+					slog.String("user", user.Username), slog.Any("err", derr))
 				return dtos.LoginResponse{}, errors.New("server error")
 			}
 		}
@@ -135,14 +144,14 @@ func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 	user.FailedAttempts = 0
 	user.LastActive = time.Now()
 	if err := repositories.UpdateUser(user); err != nil {
-		log.Printf("Failed to persist successful login state: %v", err)
+		slog.Error("failed to persist successful login state", slog.Any("err", err))
 	}
 
 	switch pinType {
 	case 1:
-		log.Println("Normal PIN login - preserving any active duress signals")
+		slog.Debug("normal pin login", slog.String("user", request.Username))
 	case 2:
-		log.Println("Duress PIN login - creating silent duress signal")
+		slog.Debug("duress pin login", slog.String("user", request.Username))
 		if err := repositories.SaveDuress(
 			request.Username,
 			"Silent Login",
@@ -150,7 +159,8 @@ func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 			time.Now(),
 			request.AdditionalData,
 		); err != nil {
-			log.Printf("Error creating duress signal: %v", err)
+			slog.Error("failed to create silent duress signal",
+				slog.String("user", request.Username), slog.Any("err", err))
 		}
 	}
 
@@ -167,11 +177,11 @@ func Login(request dtos.LoginRequest) (dtos.LoginResponse, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString(jwtKey)
 	if err != nil {
-		log.Println("Error signing token:", err)
+		slog.Error("token signing failed", slog.Any("err", err))
 		return dtos.LoginResponse{}, err
 	}
 
-	log.Println("Login successful for user:", request.Username)
+	slog.Debug("login successful", slog.String("user", request.Username))
 	return dtos.LoginResponse{Token: tokenString}, nil
 }
 

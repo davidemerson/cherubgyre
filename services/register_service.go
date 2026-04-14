@@ -6,7 +6,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/big"
 
 	"github.com/google/uuid"
@@ -80,19 +80,19 @@ func RegisterUser(registerDTO dtos.RegisterDTO) (string, dtos.RegisterDTO, error
 	for {
 		username, err = generateUsername()
 		if err != nil {
-			log.Printf("Error generating username: %v", err)
+			slog.Error("username generation failed", slog.Any("err", err))
 			return "", dtos.RegisterDTO{}, fmt.Errorf("failed to generate username: %w", err)
 		}
 
 		taken, err = repositories.IsUsernameTaken(username)
 		if err != nil {
-			log.Printf("Error checking if username is taken: %v", err)
+			slog.Error("username uniqueness check failed", slog.Any("err", err))
 			return "", dtos.RegisterDTO{}, fmt.Errorf("failed to check username uniqueness: %w", err)
 		}
 		if !taken {
 			break // Unique username found
 		}
-		log.Printf("Username '%s' is already taken. Generating a new one.", username)
+		slog.Debug("username collision, regenerating", slog.String("username", username))
 	}
 
 	registerDTO.Avatar = "https://api.dicebear.com/7.x/identicon/svg?seed=" + username + "&rowColor=000000"
@@ -121,11 +121,11 @@ func RegisterUser(registerDTO dtos.RegisterDTO) (string, dtos.RegisterDTO, error
 	registerDTO.DuressPin = ""
 
 	if err := repositories.SaveUser(registerDTO); err != nil {
-		log.Printf("Error saving user: %v", err)
+		slog.Error("save user failed", slog.String("user", registerDTO.Username), slog.Any("err", err))
 		return "", dtos.RegisterDTO{}, err
 	}
 
-	log.Printf("User saved successfully: %s", registerDTO.Username)
+	slog.Info("user registered", slog.String("user", registerDTO.Username))
 	// Never echo PIN material back to the caller.
 	response := registerDTO
 	response.NormalPinHash = ""

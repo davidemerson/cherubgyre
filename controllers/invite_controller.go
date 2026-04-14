@@ -4,7 +4,7 @@ import (
 	"cherubgyre/services"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -22,7 +22,7 @@ func Invite(w http.ResponseWriter, r *http.Request) {
 
 	inviteCode, err := services.CreateInvite(p.Username)
 	if err != nil {
-		log.Printf("Error creating invite: %v", err)
+		slog.Error("create invite failed", slog.Any("err", err))
 		if errors.Is(err, services.ErrRateLimitExceeded) {
 			http.Error(w, err.Error(), http.StatusTooManyRequests)
 			return

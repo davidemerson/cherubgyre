@@ -4,7 +4,7 @@ import (
 	"cherubgyre/services"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -36,7 +36,7 @@ func PostDuress(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, services.ErrDuressRateLimited):
 			http.Error(w, err.Error(), http.StatusTooManyRequests)
 		default:
-			log.Printf("Error posting duress: %v", err)
+			slog.Error("post duress failed", slog.Any("err", err))
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 		return
@@ -68,7 +68,7 @@ func CancelDuress(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
-		log.Printf("Error canceling duress: %v", err)
+		slog.Error("cancel duress failed", slog.Any("err", err))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -81,7 +81,7 @@ func GetDuressMap(w http.ResponseWriter, r *http.Request) {
 
 	duressMap, err := services.GetDuressMap(p.Username)
 	if err != nil {
-		log.Printf("Error getting duress map: %v", err)
+		slog.Error("get duress map failed", slog.Any("err", err))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -101,7 +101,7 @@ func GetFollowingDuress(w http.ResponseWriter, r *http.Request) {
 
 	duresses, err := services.GetFollowingDuress(p.Username)
 	if err != nil {
-		log.Printf("Error getting following duress: %v", err)
+		slog.Error("get following duress failed", slog.Any("err", err))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -138,7 +138,8 @@ func DismissDuressNotification(w http.ResponseWriter, r *http.Request) {
 	target := vars["username"]
 
 	if err := services.UnfollowUser(p.Username, target); err != nil {
-		log.Printf("Error dismissing notification (unfollowing %s): %v", sanitizeForLog(target), err)
+		slog.Error("dismiss duress notification failed",
+			slog.String("target", sanitizeForLog(target)), slog.Any("err", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

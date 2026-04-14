@@ -2,13 +2,16 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+	"strings"
 )
 
 type Config struct {
 	JWTSecret  []byte
 	AdminToken string
 	Port       string
+	LogLevel   slog.Level
 }
 
 // Load reads required configuration from environment variables.
@@ -40,5 +43,22 @@ func Load() (*Config, error) {
 		JWTSecret:  []byte(secret),
 		AdminToken: adminToken,
 		Port:       port,
+		LogLevel:   parseLogLevel(os.Getenv("LOG_LEVEL")),
 	}, nil
+}
+
+// parseLogLevel turns a LOG_LEVEL env-var string (debug|info|warn|error,
+// case-insensitive) into a slog.Level. Empty or unknown values default
+// to Info so a misconfigured operator still sees something useful.
+func parseLogLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }

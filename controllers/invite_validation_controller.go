@@ -4,7 +4,7 @@ import (
 	"cherubgyre/dtos"
 	"cherubgyre/services"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -12,14 +12,14 @@ func ValidateInviteCode(w http.ResponseWriter, r *http.Request) {
 	var request dtos.InviteValidationRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		log.Printf("Error decoding request body: %v", err)
+		slog.Warn("validate-invite decode failed", slog.Any("err", err))
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	response, err := services.ValidateInviteCode(request.InviteCode)
 	if err != nil {
-		log.Printf("Error validating invite code: %v", err)
+		slog.Error("validate invite failed", slog.Any("err", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

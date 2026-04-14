@@ -1,7 +1,7 @@
 package repositories
 
 import (
-	"log"
+	"log/slog"
 	"time"
 )
 
@@ -27,7 +27,7 @@ func loadDuresses() ([]Duress, error) {
 // active duress signal. Any pre-existing signal for the same user is
 // dropped before the new one is appended.
 func SaveDuress(username, duressType, message string, timestamp time.Time, additionalData map[string]any) error {
-	log.Printf("Saving duress for user: %s", username)
+	slog.Debug("saving duress signal", slog.String("user", username), slog.String("type", duressType))
 	duressStore.mu.Lock()
 	defer duressStore.mu.Unlock()
 
@@ -54,7 +54,7 @@ func SaveDuress(username, duressType, message string, timestamp time.Time, addit
 }
 
 func DeleteDuress(username string) error {
-	log.Printf("Deleting duress for user: %s", username)
+	slog.Debug("deleting duress signal", slog.String("user", username))
 	duressStore.mu.Lock()
 	defer duressStore.mu.Unlock()
 

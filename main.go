@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,11 +31,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("configuration error: %v", err)
 	}
+
+	// Install a JSON slog handler as the process-wide default logger.
+	// Every package that imports log/slog and calls slog.Info(...) etc.
+	// picks this up automatically — no package-level "logger" field
+	// needed. Output goes to stdout so `docker logs` / `kubectl logs`
+	// see it without extra plumbing.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: cfg.LogLevel,
+	})))
+
 	services.SetJWTSecret(cfg.JWTSecret)
 	controllers.SetAdminToken(cfg.AdminToken)
 
 	if err := services.BackfillUIDs(); err != nil {
-		log.Printf("UID backfill error: %v", err)
+		slog.Error("UID backfill failed", slog.Any("err", err))
 	}
 
 	router := mux.NewRouter()
@@ -94,32 +105,36 @@ func main() {
 	// single worker. Default: enabled.
 	if os.Getenv("RUN_INACTIVITY_JOB") != "false" {
 		go func() {
-			log.Println("Starting background inactivity checker...")
+			slog.Info("background inactivity checker started")
 			ticker := time.NewTicker(24 * time.Hour)
 			defer ticker.Stop()
 
 			if err := services.CheckInactivity(rootCtx); err != nil {
-				log.Printf("Error running initial inactivity check: %v", err)
+				slog.Error("initial inactivity check failed", slog.Any("err", err))
 			}
 			for {
 				select {
 				case <-rootCtx.Done():
-					log.Println("Inactivity checker stopping due to shutdown")
+					slog.Info("inactivity checker stopping due to shutdown")
 					return
 				case <-ticker.C:
 					if err := services.CheckInactivity(rootCtx); err != nil {
-						log.Printf("Error running scheduled inactivity check: %v", err)
+						slog.Error("scheduled inactivity check failed", slog.Any("err", err))
 					}
 				}
 			}
 		}()
 	}
 
-	// Apply global body-size and security-header middleware. Body size
-	// is enforced BEFORE auth so an unauthenticated attacker can't chew
-	// memory trying to blow past it. Order: body cap → security headers
-	// → router (which applies RequireAuth per-route).
+	// Apply global middleware. Order matters:
+	//   1. Body-size cap — enforced first so an unauthenticated
+	//      attacker can't chew memory trying to blow past it.
+	//   2. Request ID — injected early so every log line and
+	//      downstream handler can reference the same ID.
+	//   3. Security headers — set on every response including 413s.
+	//   4. Router — applies RequireAuth per authed route.
 	handler := controllers.MaxBodyBytes(defaultMaxBodyBytes)(router)
+	handler = controllers.RequestID(handler)
 	handler = controllers.SecurityHeaders(handler)
 
 	// Wrap the listener in an explicit http.Server with sane timeouts
@@ -138,7 +153,7 @@ func main() {
 	// the main goroutine.
 	serverErr := make(chan error, 1)
 	go func() {
-		log.Println("Starting server on :" + cfg.Port)
+		slog.Info("server starting", slog.String("addr", ":"+cfg.Port))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 			return
@@ -155,13 +170,13 @@ func main() {
 			log.Fatalf("server error: %v", err)
 		}
 	case <-rootCtx.Done():
-		log.Println("Shutdown signal received, draining connections...")
+		slog.Info("shutdown signal received, draining connections")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("graceful shutdown error: %v", err)
+			slog.Error("graceful shutdown error", slog.Any("err", err))
 		} else {
-			log.Println("Server stopped cleanly")
+			slog.Info("server stopped cleanly")
 		}
 	}
 }

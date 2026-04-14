@@ -2,7 +2,7 @@ package repositories
 
 import (
 	"errors"
-	"log"
+	"log/slog"
 )
 
 type FollowerRelation struct {
@@ -22,7 +22,10 @@ func loadFollowers() ([]FollowerRelation, error) {
 }
 
 func AddFollower(followerID, followedID, status string) error {
-	log.Printf("Adding follower: %s -> %s [%s]", followerID, followedID, status)
+	slog.Debug("add follow relation",
+		slog.String("follower", followerID),
+		slog.String("followed", followedID),
+		slog.String("status", status))
 	followerStore.mu.Lock()
 	defer followerStore.mu.Unlock()
 
@@ -47,7 +50,9 @@ func AddFollower(followerID, followedID, status string) error {
 }
 
 func RemoveFollower(followerID, followedID string) error {
-	log.Printf("Removing relationship: %s -> %s", followerID, followedID)
+	slog.Debug("remove follow relation",
+		slog.String("follower", followerID),
+		slog.String("followed", followedID))
 	followerStore.mu.Lock()
 	defer followerStore.mu.Unlock()
 
@@ -74,7 +79,9 @@ func RemoveFollower(followerID, followedID string) error {
 }
 
 func AcceptFollower(followerID, followedID string) error {
-	log.Printf("Accepting follower: %s -> %s", followerID, followedID)
+	slog.Debug("accept follow relation",
+		slog.String("follower", followerID),
+		slog.String("followed", followedID))
 	followerStore.mu.Lock()
 	defer followerStore.mu.Unlock()
 
@@ -144,7 +151,7 @@ func BanFollower(followerID, followedID string) error {
 // (per the wordlist space), the new user does not inherit the old user's
 // follower graph.
 func DeleteUserRelations(username string) error {
-	log.Printf("Purging follower relations for: %s", username)
+	slog.Info("purging follower relations", slog.String("user", username))
 	followerStore.mu.Lock()
 	defer followerStore.mu.Unlock()
 

@@ -4,7 +4,7 @@ import (
 	"cherubgyre/dtos"
 	"cherubgyre/repositories"
 	"errors"
-	"log"
+	"log/slog"
 )
 
 func ValidateInviteCode(inviteCode string) (dtos.InviteValidationResponse, error) {
@@ -17,7 +17,7 @@ func ValidateInviteCode(inviteCode string) (dtos.InviteValidationResponse, error
 
 	valid, err := repositories.ValidateInviteCode(inviteCode)
 	if err != nil {
-		log.Printf("Error validating invite code: %v", err)
+		slog.Error("validate invite code failed", slog.Any("err", err))
 		return dtos.InviteValidationResponse{
 			Valid:   false,
 			Message: "Error validating invite code",

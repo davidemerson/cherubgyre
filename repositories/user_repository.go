@@ -15,7 +15,7 @@ import (
 	"cherubgyre/dtos"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -102,7 +102,7 @@ func SaveUser(registerDTO dtos.RegisterDTO) error {
 	if err := userStore.saveLocked(users); err != nil {
 		return err
 	}
-	log.Printf("User saved: %s", registerDTO.Username)
+	slog.Info("user saved", slog.String("user", registerDTO.Username))
 	return nil
 }
 
@@ -171,7 +171,7 @@ func UpdateUser(updatedUser dtos.RegisterDTO) error {
 	if err := userStore.saveLocked(users); err != nil {
 		return err
 	}
-	log.Printf("User updated: %s", updatedUser.Username)
+	slog.Debug("user updated", slog.String("user", updatedUser.Username))
 	return nil
 }
 
@@ -244,7 +244,7 @@ func MarkInviteCodeAsUsed(inviteCode string) error {
 	if err := usedInviteStore.saveLocked(used); err != nil {
 		return err
 	}
-	log.Printf("Invite code marked as used: %s", inviteCode)
+	slog.Info("invite code marked used", slog.String("code", inviteCode))
 	return nil
 }
 
@@ -281,7 +281,7 @@ func DeleteUser(username string) error {
 	if err := userStore.saveLocked(users); err != nil {
 		return err
 	}
-	log.Printf("User deleted: %s", username)
+	slog.Info("user deleted", slog.String("user", username))
 	return nil
 }
 

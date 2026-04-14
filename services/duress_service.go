@@ -2,7 +2,7 @@ package services
 
 import (
 	"cherubgyre/repositories"
-	"log"
+	"log/slog"
 	"time"
 )
 
@@ -25,13 +25,14 @@ func PostDuress(username, duressType, message string, timestamp time.Time, addit
 	}
 
 	if err := repositories.SaveDuress(username, duressType, message, timestamp, additionalData); err != nil {
-		log.Println("Error saving duress:", err)
+		slog.Error("save duress failed", slog.String("user", username), slog.Any("err", err))
 		return err
 	}
 
 	user.LastDuressAt = time.Now()
 	if err := repositories.UpdateUser(user); err != nil {
-		log.Printf("Failed to persist LastDuressAt for %s: %v", username, err)
+		slog.Error("failed to persist last_duress_at",
+			slog.String("user", username), slog.Any("err", err))
 	}
 	return nil
 }

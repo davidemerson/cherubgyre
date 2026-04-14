@@ -5,6 +5,8 @@ import (
 	"context"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // sanitizeForLog strips newlines and other control characters from a
@@ -67,6 +69,42 @@ func SecurityHeaders(next http.Handler) http.Handler {
 // authCtxKey is unexported so callers must go through the helpers to read
 // identity off a request context.
 type authCtxKey struct{}
+
+// requestIDCtxKey carries the per-request ID installed by RequestID.
+type requestIDCtxKey struct{}
+
+// RequestIDFromContext returns the request ID installed by RequestID
+// middleware, or an empty string if the middleware was not applied.
+// Exported so handlers and services can include it in slog fields.
+func RequestIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(requestIDCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// RequestID is middleware that ensures every request carries a stable
+// identifier for the duration of its processing. If the client sends
+// an X-Request-ID header we trust it (trimmed, capped at 128 chars,
+// sanitized to printable ASCII); otherwise we mint a fresh UUIDv4.
+// The value is attached to the request context and echoed back as a
+// response header so clients can correlate with their own logs.
+func RequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		if id == "" {
+			id = uuid.NewString()
+		} else {
+			id = sanitizeForLog(id)
+		}
+		w.Header().Set("X-Request-ID", id)
+		ctx := context.WithValue(r.Context(), requestIDCtxKey{}, id)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 // authPrincipal is what RequireAuth attaches to the request context after
 // it has validated the bearer token.

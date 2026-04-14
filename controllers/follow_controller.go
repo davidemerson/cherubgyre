@@ -3,7 +3,7 @@ package controllers
 import (
 	"cherubgyre/services"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -15,7 +15,7 @@ func FollowUser(w http.ResponseWriter, r *http.Request) {
 	target := vars["username"]
 
 	if err := services.FollowUser(p.Username, target); err != nil {
-		log.Printf("Error following user: %v", err)
+		slog.Error("follow user failed", slog.Any("err", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -29,7 +29,7 @@ func AcceptFollow(w http.ResponseWriter, r *http.Request) {
 	follower := vars["username"]
 
 	if err := services.AcceptFollow(p.Username, follower); err != nil {
-		log.Printf("Error accepting follower: %v", err)
+		slog.Error("accept follower failed", slog.Any("err", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -43,7 +43,7 @@ func DeclineFollow(w http.ResponseWriter, r *http.Request) {
 	follower := vars["username"]
 
 	if err := services.DeclineFollow(p.Username, follower); err != nil {
-		log.Printf("Error declining follower: %v", err)
+		slog.Error("decline follower failed", slog.Any("err", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -63,7 +63,7 @@ func GetFollowRequests(w http.ResponseWriter, r *http.Request) {
 
 	requests, err := services.GetFollowRequests(p.Username)
 	if err != nil {
-		log.Printf("Error getting follow requests: %v", err)
+		slog.Error("get follow requests failed", slog.Any("err", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -77,7 +77,7 @@ func UnfollowUser(w http.ResponseWriter, r *http.Request) {
 	target := vars["username"]
 
 	if err := services.UnfollowUser(p.Username, target); err != nil {
-		log.Printf("Error unfollowing user: %v", err)
+		slog.Error("unfollow failed", slog.Any("err", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -97,7 +97,7 @@ func GetFollowers(w http.ResponseWriter, r *http.Request) {
 
 	followers, err := services.GetFollowers(username)
 	if err != nil {
-		log.Printf("Error getting followers: %v", err)
+		slog.Error("get followers failed", slog.Any("err", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -111,7 +111,7 @@ func BanFollower(w http.ResponseWriter, r *http.Request) {
 	target := vars["username"]
 
 	if err := services.BanFollower(p.Username, target); err != nil {
-		log.Printf("Error banning follower: %v", err)
+		slog.Error("ban follower failed", slog.Any("err", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -129,7 +129,7 @@ func GetFollowing(w http.ResponseWriter, r *http.Request) {
 
 	following, err := services.GetFollowing(p.Username)
 	if err != nil {
-		log.Printf("Error getting following list: %v", err)
+		slog.Error("get following failed", slog.Any("err", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

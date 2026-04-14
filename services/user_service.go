@@ -4,7 +4,7 @@ import (
 	"cherubgyre/repositories"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,29 +25,31 @@ func BackfillUIDs() error {
 		}
 		uid, err := uuid.NewV7()
 		if err != nil {
-			log.Printf("failed to mint uid for %s: %v", u.Username, err)
+			slog.Error("failed to mint uid", slog.String("user", u.Username), slog.Any("err", err))
 			continue
 		}
 		u.UID = uid.String()
 		if err := repositories.UpdateUser(u); err != nil {
-			log.Printf("failed to persist uid for %s: %v", u.Username, err)
+			slog.Error("failed to persist uid", slog.String("user", u.Username), slog.Any("err", err))
 			continue
 		}
 		filled++
 	}
 	if filled > 0 {
-		log.Printf("UID backfill: assigned %d UID(s)", filled)
+		slog.Info("uid backfill complete", slog.Int("assigned", filled))
 	}
 	return nil
 }
 
 // DeregisterUser handles the complete removal of a user and notifies friends
 func DeregisterUser(username string, reason string) error {
-	log.Printf("Deregistering user %s due to: %s", username, reason)
+	slog.Info("deregistering user",
+		slog.String("user", username), slog.String("reason", reason))
 
-	// 1. Create a "Left" duress signal (mimicking duress)
-	// We need to manually construct this since we might not have a token
-	// This relies on the repository layer directly
+	// 1. Create a "Left" duress signal (mimicking duress). We post this
+	// BEFORE the user is deleted so followers can see the final signal.
+	// If it fails we still proceed with deletion — the priority is
+	// removing the data.
 	err := repositories.SaveDuress(
 		username,
 		"User Left",
@@ -56,14 +58,14 @@ func DeregisterUser(username string, reason string) error {
 		map[string]any{"reason": reason, "type": "deregistration"},
 	)
 	if err != nil {
-		log.Printf("Error creating exit signal for %s: %v", username, err)
-		// Continue with deletion even if signal fails? 
-		// Ideally yes, we want them gone.
+		slog.Error("failed to create exit signal",
+			slog.String("user", username), slog.Any("err", err))
 	}
 
 	// 2. Delete the user data
 	if err := repositories.DeleteUser(username); err != nil {
-		log.Printf("Error deleting user %s: %v", username, err)
+		slog.Error("failed to delete user",
+			slog.String("user", username), slog.Any("err", err))
 		return err
 	}
 
@@ -74,7 +76,7 @@ func DeregisterUser(username string, reason string) error {
 // inactive for > 1 year. Honors ctx cancellation between users so a
 // graceful-shutdown signal can interrupt a long sweep cleanly.
 func CheckInactivity(ctx context.Context) error {
-	log.Println("Starting inactivity check...")
+	slog.Info("inactivity check starting")
 	users, err := repositories.GetAllUsers()
 	if err != nil {
 		return err
@@ -85,7 +87,7 @@ func CheckInactivity(ctx context.Context) error {
 	for _, user := range users {
 		select {
 		case <-ctx.Done():
-			log.Println("Inactivity check interrupted by shutdown")
+			slog.Info("inactivity check interrupted by shutdown")
 			return ctx.Err()
 		default:
 		}
@@ -97,13 +99,16 @@ func CheckInactivity(ctx context.Context) error {
 		}
 
 		if time.Since(user.LastActive) > expirationDuration {
-			log.Printf("User %s is inactive (Last active: %v). Deregistering...", user.Username, user.LastActive)
+			slog.Info("inactive user deregistration",
+				slog.String("user", user.Username),
+				slog.Time("last_active", user.LastActive))
 			if err := DeregisterUser(user.Username, "Inactivity"); err != nil {
-				log.Printf("Failed to deregister inactive user %s: %v", user.Username, err)
+				slog.Error("failed to deregister inactive user",
+					slog.String("user", user.Username), slog.Any("err", err))
 			}
 		}
 	}
 
-	log.Println("Inactivity check complete.")
+	slog.Info("inactivity check complete")
 	return nil
 }

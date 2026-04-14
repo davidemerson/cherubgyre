@@ -3,7 +3,7 @@ package services
 import (
 	"cherubgyre/repositories"
 	"errors"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,7 +36,7 @@ func CreateInvite(username string) (string, error) {
 		return "", err
 	}
 
-	log.Printf("Invite code created for %s", username)
+	slog.Info("invite code created", slog.String("user", username))
 	return inviteCode, nil
 }
 
