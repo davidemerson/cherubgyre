@@ -49,6 +49,10 @@ func HealthCheck() error {
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("close probe: %w", err)
 	}
+	// #nosec G304 -- `name` is the path returned by os.CreateTemp
+	// above, so it is not attacker-controlled. We read it back
+	// purely to confirm the round-trip is working before declaring
+	// the server ready.
 	if _, err := os.ReadFile(name); err != nil {
 		return fmt.Errorf("read probe: %w", err)
 	}
