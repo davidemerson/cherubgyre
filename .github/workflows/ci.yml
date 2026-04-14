@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.24"
+  GO_VERSION: "1.25"
 
 jobs:
   build:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -32,30 +32,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
       - name: go test -race
-        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
-      - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage.out
-          if-no-files-found: ignore
+        # No _test.go files yet; keep this wired so new test files are
+        # picked up automatically. Coverage flags are intentionally omitted
+        # until there is something to cover — the covdata tool chain
+        # misbehaves on empty test suites.
+        run: go test ./... -race
 
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: latest
           args: --timeout=5m
@@ -65,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -81,7 +78,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: securego/gosec@master
         with:
-          args: -exclude-dir=test ./...
+          # G104 (unhandled errors) is covered by golangci-lint's errcheck
+          # with finer granularity. Excluding here avoids duplicate noise
+          # on intentional cleanup-path discards (tmp.Close, os.Remove
+          # inside error branches).
+          args: -exclude=G104 -exclude-dir=test ./...
 
   integration:
     name: Integration Tests
@@ -89,11 +90,11 @@ jobs:
     needs: [build]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install pytest
@@ -134,7 +135,7 @@ jobs:
         run: kill "$SERVER_PID" || true
       - name: Upload server log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-log
           path: ${{ env.SERVER_LOG }}

@@ -2,7 +2,6 @@
 # cherubgyre
 
 [![CI](https://github.com/davidemerson/cherubgyre/actions/workflows/ci.yml/badge.svg)](https://github.com/davidemerson/cherubgyre/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/davidemerson/cherubgyre/actions/workflows/codeql.yml/badge.svg)](https://github.com/davidemerson/cherubgyre/actions/workflows/codeql.yml)
 
 **cherubgyre** is an anonymous community defense social network designed to facilitate secure and private interactions among users. The backend is implemented in Go and is containerized for seamless deployment.
 
