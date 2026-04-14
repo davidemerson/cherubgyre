@@ -5,9 +5,14 @@ import (
 )
 
 // RegisterDTO is both the wire shape for POST /register and the on-disk
-// storage record for a user. NormalPin/DuressPin are only populated on
-// incoming requests or in legacy records prior to the hash migration; at
-// rest they are always empty and the hash fields are authoritative.
+// storage record for a user.
+//
+// NormalPin and DuressPin are incoming-only fields that carry the
+// plaintext PIN from a register or change-pin request to the service
+// layer. They are never persisted: services.RegisterUser hashes them
+// into NormalPinHash / DuressPinHash and clears the plaintext before
+// calling repositories.SaveUser, and controllers.Register zeroes them
+// again in the response body as defense in depth.
 type RegisterDTO struct {
 	UID                     string    `json:"uid,omitempty"`
 	UserInviteCode          string    `json:"invite_code_user,omitempty"`

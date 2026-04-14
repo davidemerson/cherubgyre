@@ -29,13 +29,13 @@ func newFileStore(path string) *fileStore {
 
 // load decodes the file contents into out. If the file does not exist or
 // is empty, out is left untouched and nil is returned.
-func (s *fileStore) load(out interface{}) error {
+func (s *fileStore) load(out any) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.loadLocked(out)
 }
 
-func (s *fileStore) loadLocked(out interface{}) error {
+func (s *fileStore) loadLocked(out any) error {
 	f, err := os.Open(s.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -69,7 +69,7 @@ func (s *fileStore) loadLocked(out interface{}) error {
 // during cleanup are intentionally dropped: we already have a primary
 // error to return, and logging a second error would only confuse the
 // caller.
-func (s *fileStore) saveLocked(in interface{}) error {
+func (s *fileStore) saveLocked(in any) error {
 	dir := filepath.Dir(s.path)
 	if dir == "" {
 		dir = "."

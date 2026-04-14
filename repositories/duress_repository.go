@@ -10,7 +10,7 @@ type Duress struct {
 	DuressType     string                 `json:"duress_type"`
 	Message        string                 `json:"message"`
 	Timestamp      time.Time              `json:"timestamp"`
-	AdditionalData map[string]interface{} `json:"additional_data"`
+	AdditionalData map[string]any `json:"additional_data"`
 }
 
 var duressStore = newFileStore("duress.json")
@@ -26,7 +26,7 @@ func loadDuresses() ([]Duress, error) {
 // SaveDuress enforces the per-user invariant that there is at most one
 // active duress signal. Any pre-existing signal for the same user is
 // dropped before the new one is appended.
-func SaveDuress(username, duressType, message string, timestamp time.Time, additionalData map[string]interface{}) error {
+func SaveDuress(username, duressType, message string, timestamp time.Time, additionalData map[string]any) error {
 	log.Printf("Saving duress for user: %s", username)
 	duressStore.mu.Lock()
 	defer duressStore.mu.Unlock()
@@ -91,15 +91,15 @@ func GetMyDuress(username string) (*Duress, error) {
 
 // GetDuressMap remains for backwards compatibility with the existing
 // /users/map route. Wraps GetMyDuress in the legacy shape.
-func GetDuressMap(username string) (map[string]interface{}, error) {
+func GetDuressMap(username string) (map[string]any, error) {
 	d, err := GetMyDuress(username)
 	if err != nil {
 		return nil, err
 	}
 	if d == nil {
-		return map[string]interface{}{}, nil
+		return map[string]any{}, nil
 	}
-	return map[string]interface{}{d.Username: *d}, nil
+	return map[string]any{d.Username: *d}, nil
 }
 
 func GetActiveDuressForUsers(usernames []string) ([]Duress, error) {

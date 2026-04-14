@@ -1,3 +1,14 @@
+// Package repositories persists cherubgyre state to JSON files.
+//
+// # Lock ordering
+//
+// Two fileStore mutexes in this package can be held simultaneously:
+// userStore and usedInviteStore. SaveUser takes userStore first and
+// then calls IsInviteCodeUsed / MarkInviteCodeAsUsed, which acquire
+// usedInviteStore. To prevent deadlock, **userStore must always be
+// acquired before usedInviteStore**. No function in this package
+// currently acquires them in the opposite order; adding one without
+// updating this rule will introduce a latent hang.
 package repositories
 
 import (
@@ -108,12 +119,8 @@ func GetUserByID(username string) (dtos.RegisterDTO, error) {
 	return dtos.RegisterDTO{}, errors.New("user not found")
 }
 
-// ValidateUserCredentials checks the provided PIN against the stored Normal
-// and Duress PIN hashes (bcrypt, constant-time). If the stored record is a
-// legacy plaintext entry from before the hash migration, it falls back to
-// a direct comparison so the service stays available during rollout — the
-// startup migration in services.MigratePinHashes rewrites those records on
-// next boot.
+// ValidateUserCredentials checks the provided PIN against the stored
+// Normal and Duress PIN hashes (bcrypt, constant-time).
 //
 // Returns: 0 = no match, 1 = Normal PIN match, 2 = Duress PIN match.
 func ValidateUserCredentials(username, pin string) (int, error) {
@@ -129,22 +136,14 @@ func ValidateUserCredentials(username, pin string) (int, error) {
 		return 0, err
 	}
 
-	if user.NormalPinHash != "" {
-		if bcrypt.CompareHashAndPassword([]byte(user.NormalPinHash), []byte(pin)) == nil {
-			return 1, nil
-		}
-	} else if user.NormalPin != "" && user.NormalPin == pin {
+	if user.NormalPinHash != "" &&
+		bcrypt.CompareHashAndPassword([]byte(user.NormalPinHash), []byte(pin)) == nil {
 		return 1, nil
 	}
-
-	if user.DuressPinHash != "" {
-		if bcrypt.CompareHashAndPassword([]byte(user.DuressPinHash), []byte(pin)) == nil {
-			return 2, nil
-		}
-	} else if user.DuressPin != "" && user.DuressPin == pin {
+	if user.DuressPinHash != "" &&
+		bcrypt.CompareHashAndPassword([]byte(user.DuressPinHash), []byte(pin)) == nil {
 		return 2, nil
 	}
-
 	return 0, errors.New("invalid credentials")
 }
 

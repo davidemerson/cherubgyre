@@ -32,7 +32,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	user.NormalPinHash = ""
 	user.DuressPinHash = ""
 	w.WriteHeader(http.StatusCreated)
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": message,
 		"user":    user,
 	}

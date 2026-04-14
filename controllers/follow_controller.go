@@ -57,7 +57,7 @@ func GetFollowRequests(w http.ResponseWriter, r *http.Request) {
 	// Duress mode: empty list is believable (no one is requesting to
 	// follow you right now) and leaks no real follower graph data.
 	if p.IsDuress {
-		_ = json.NewEncoder(w).Encode([]interface{}{})
+		_ = json.NewEncoder(w).Encode([]any{})
 		return
 	}
 

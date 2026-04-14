@@ -53,7 +53,7 @@ func DeregisterUser(username string, reason string) error {
 		"User Left",
 		fmt.Sprintf("User %s has left the app (%s)", username, reason),
 		time.Now(),
-		map[string]interface{}{"reason": reason, "type": "deregistration"},
+		map[string]any{"reason": reason, "type": "deregistration"},
 	)
 	if err != nil {
 		log.Printf("Error creating exit signal for %s: %v", username, err)
@@ -67,53 +67,6 @@ func DeregisterUser(username string, reason string) error {
 		return err
 	}
 
-	return nil
-}
-
-// MigratePinHashes rewrites any user record that still has plaintext
-// NormalPin/DuressPin fields, hashing them with bcrypt and clearing the
-// plaintext. Idempotent: records that already have hashes are skipped.
-// Called once at startup so that legacy users.json files from before the
-// bcrypt rollout are brought into the new format with zero operator work.
-func MigratePinHashes() error {
-	users, err := repositories.GetAllUsers()
-	if err != nil {
-		return err
-	}
-	migrated := 0
-	for _, user := range users {
-		changed := false
-		if user.NormalPinHash == "" && user.NormalPin != "" {
-			hash, err := HashPin(user.NormalPin)
-			if err != nil {
-				log.Printf("Failed to hash normal pin for %s: %v", user.Username, err)
-				continue
-			}
-			user.NormalPinHash = hash
-			user.NormalPin = ""
-			changed = true
-		}
-		if user.DuressPinHash == "" && user.DuressPin != "" {
-			hash, err := HashPin(user.DuressPin)
-			if err != nil {
-				log.Printf("Failed to hash duress pin for %s: %v", user.Username, err)
-				continue
-			}
-			user.DuressPinHash = hash
-			user.DuressPin = ""
-			changed = true
-		}
-		if changed {
-			if err := repositories.UpdateUser(user); err != nil {
-				log.Printf("Failed to persist migrated pins for %s: %v", user.Username, err)
-				continue
-			}
-			migrated++
-		}
-	}
-	if migrated > 0 {
-		log.Printf("PIN migration: hashed %d legacy user record(s)", migrated)
-	}
 	return nil
 }
 

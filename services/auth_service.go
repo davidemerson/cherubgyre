@@ -29,10 +29,41 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// errInvalidCredentials is the single opaque error returned for any login
-// failure (unknown user, wrong PIN, missing pin, etc.) so callers cannot
-// distinguish causes and enumerate the username space.
-var errInvalidCredentials = errors.New("invalid credentials")
+// Sentinel errors returned by services. Controllers should use
+// errors.Is to map them to HTTP status codes — never switch on the
+// error message text, because that couples the wire response to a
+// mutable string literal.
+var (
+	// ErrInvalidCredentials is the single opaque error returned for
+	// any login failure (unknown user, wrong PIN, missing pin, etc.)
+	// so callers cannot distinguish causes and enumerate the
+	// username space.
+	ErrInvalidCredentials = errors.New("invalid credentials")
+
+	// ErrIncorrectCurrentPin is returned when ChangePin is called
+	// with a current_pin that does not match the user's normal PIN.
+	ErrIncorrectCurrentPin = errors.New("incorrect current pin")
+
+	// ErrIncorrectCurrentDuressPin is the duress-PIN equivalent of
+	// ErrIncorrectCurrentPin for ChangeDuressPin.
+	ErrIncorrectCurrentDuressPin = errors.New("incorrect current duress pin")
+
+	// ErrPinsMustDiffer is returned when a change-pin request would
+	// result in normal_pin == duress_pin (either direction).
+	ErrPinsMustDiffer = errors.New("normal and duress PIN must differ")
+
+	// ErrInvalidDuressPin is returned by PostDuress / VerifyDuressPin
+	// when the supplied pin is not the user's duress PIN.
+	ErrInvalidDuressPin = errors.New("invalid duress pin")
+
+	// ErrDuressRateLimited is returned when a user posts duress
+	// signals faster than the 1/hour budget.
+	ErrDuressRateLimited = errors.New("duress rate limit exceeded")
+
+	// errInvalidCredentials is the deprecated lowercase alias kept
+	// for internal code paths that haven't been migrated yet.
+	errInvalidCredentials = ErrInvalidCredentials
+)
 
 // MinPinLength / MaxPinLength bound the acceptable PIN length, applied
 // uniformly to registration, change-pin, change-duress-pin, and runtime
@@ -153,7 +184,7 @@ func parseToken(tokenStr string) (*Claims, error) {
 		tokenStr = tokenStr[7:]
 	}
 	claims := &Claims{}
-	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
@@ -200,11 +231,12 @@ func IsDuressToken(tokenStr string) bool {
 func ChangePin(username, currentPin, newPin string) error {
 	pinType, err := repositories.ValidateUserCredentials(username, currentPin)
 	if err != nil || pinType != 1 {
-		return errors.New("incorrect current pin")
+		return ErrIncorrectCurrentPin
 	}
 
+	// Reject a new PIN that collides with the user's duress PIN.
 	if _, err := repositories.ValidateUserCredentials(username, newPin); err == nil {
-		return errors.New("new pin cannot be the same as your duress pin")
+		return ErrPinsMustDiffer
 	}
 
 	user, err := repositories.GetUserByID(username)
@@ -223,11 +255,12 @@ func ChangePin(username, currentPin, newPin string) error {
 func ChangeDuressPin(username, currentPin, newPin string) error {
 	pinType, err := repositories.ValidateUserCredentials(username, currentPin)
 	if err != nil || pinType != 2 {
-		return errors.New("incorrect current duress pin")
+		return ErrIncorrectCurrentDuressPin
 	}
 
+	// Reject a new duress PIN that collides with the user's normal PIN.
 	if pt, err := repositories.ValidateUserCredentials(username, newPin); err == nil && pt == 1 {
-		return errors.New("new duress pin cannot be the same as your normal pin")
+		return ErrPinsMustDiffer
 	}
 
 	user, err := repositories.GetUserByID(username)

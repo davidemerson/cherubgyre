@@ -4,6 +4,7 @@ import (
 	"cherubgyre/dtos"
 	"cherubgyre/services"
 	"encoding/json"
+	"errors"
 	"net/http"
 )
 
@@ -48,7 +49,7 @@ func Profile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"username": user.Username,
 		"avatar":   user.Avatar,
 	}
@@ -74,10 +75,10 @@ func ChangePin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := services.ChangePin(p.Username, request.CurrentPin, request.NewPin); err != nil {
-		switch err.Error() {
-		case "incorrect current pin":
+		switch {
+		case errors.Is(err, services.ErrIncorrectCurrentPin):
 			http.Error(w, err.Error(), http.StatusUnauthorized)
-		case "new pin cannot be the same as your duress pin":
+		case errors.Is(err, services.ErrPinsMustDiffer):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		default:
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -106,10 +107,10 @@ func ChangeDuressPin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := services.ChangeDuressPin(p.Username, request.CurrentPin, request.NewPin); err != nil {
-		switch err.Error() {
-		case "incorrect current duress pin":
+		switch {
+		case errors.Is(err, services.ErrIncorrectCurrentDuressPin):
 			http.Error(w, err.Error(), http.StatusUnauthorized)
-		case "new duress pin cannot be the same as your normal pin":
+		case errors.Is(err, services.ErrPinsMustDiffer):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		default:
 			http.Error(w, "internal error", http.StatusInternalServerError)

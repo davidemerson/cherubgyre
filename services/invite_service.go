@@ -9,6 +9,11 @@ import (
 	"github.com/google/uuid"
 )
 
+// ErrRateLimitExceeded is returned by CheckRateLimit and surfaces up
+// through CreateInvite, LoginLimiter, and anywhere else the generic
+// sliding-window helper is used.
+var ErrRateLimitExceeded = errors.New("rate limit exceeded")
+
 // CreateInvite mints a new invite UUID on behalf of the already-authenticated
 // user. Rate-limited to 5 per 168 hours per the spec.
 func CreateInvite(username string) (string, error) {
@@ -47,7 +52,7 @@ func CheckRateLimit(history []int64, now int64, limit int, windowSeconds int64) 
 	}
 
 	if len(validHistory) >= limit {
-		return nil, errors.New("rate limit exceeded")
+		return nil, ErrRateLimitExceeded
 	}
 
 	validHistory = append(validHistory, now)

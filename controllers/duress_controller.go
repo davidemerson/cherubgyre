@@ -3,6 +3,7 @@ package controllers
 import (
 	"cherubgyre/services"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -14,7 +15,7 @@ type DuressRequest struct {
 	DuressType     string                 `json:"duress_type"`
 	Message        string                 `json:"message"`
 	Timestamp      time.Time              `json:"timestamp"`
-	AdditionalData map[string]interface{} `json:"additional_data"`
+	AdditionalData map[string]any `json:"additional_data"`
 	DuressPin      string                 `json:"duress_pin"`
 }
 
@@ -29,10 +30,10 @@ func PostDuress(w http.ResponseWriter, r *http.Request) {
 
 	err := services.PostDuress(p.Username, req.DuressType, req.Message, req.Timestamp, req.AdditionalData, req.DuressPin)
 	if err != nil {
-		switch err.Error() {
-		case "invalid credentials":
+		switch {
+		case errors.Is(err, services.ErrInvalidCredentials):
 			http.Error(w, err.Error(), http.StatusUnauthorized)
-		case "duress rate limit exceeded":
+		case errors.Is(err, services.ErrDuressRateLimited):
 			http.Error(w, err.Error(), http.StatusTooManyRequests)
 		default:
 			log.Printf("Error posting duress: %v", err)
@@ -63,7 +64,7 @@ func CancelDuress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := services.CancelDuress(p.Username, req.Pin); err != nil {
-		if err.Error() == "invalid credentials" {
+		if errors.Is(err, services.ErrInvalidCredentials) {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
@@ -94,7 +95,7 @@ func GetFollowingDuress(w http.ResponseWriter, r *http.Request) {
 	// Duress mode hides real duress signals entirely — a coercer looking
 	// at this screen must not see who else is in trouble.
 	if p.IsDuress {
-		_ = json.NewEncoder(w).Encode([]interface{}{})
+		_ = json.NewEncoder(w).Encode([]any{})
 		return
 	}
 

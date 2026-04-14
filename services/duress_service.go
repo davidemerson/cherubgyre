@@ -2,7 +2,6 @@ package services
 
 import (
 	"cherubgyre/repositories"
-	"errors"
 	"log"
 	"time"
 )
@@ -10,19 +9,19 @@ import (
 // PostDuress creates a user-initiated duress signal. The caller must have
 // re-entered their duress PIN; we re-validate here as defense in depth.
 // Rate-limited to one signal per hour per user (per spec).
-func PostDuress(username, duressType, message string, timestamp time.Time, additionalData map[string]interface{}, duressPin string) error {
+func PostDuress(username, duressType, message string, timestamp time.Time, additionalData map[string]any, duressPin string) error {
 	user, err := repositories.GetUserByID(username)
 	if err != nil {
-		return err
+		return ErrInvalidCredentials
 	}
 
 	pinType, err := repositories.ValidateUserCredentials(username, duressPin)
 	if err != nil || pinType != 2 {
-		return errors.New("invalid credentials")
+		return ErrInvalidCredentials
 	}
 
 	if !user.LastDuressAt.IsZero() && time.Since(user.LastDuressAt) < time.Hour {
-		return errors.New("duress rate limit exceeded")
+		return ErrDuressRateLimited
 	}
 
 	if err := repositories.SaveDuress(username, duressType, message, timestamp, additionalData); err != nil {
@@ -43,12 +42,12 @@ func PostDuress(username, duressType, message string, timestamp time.Time, addit
 func CancelDuress(username, normalPin string) error {
 	pinType, err := repositories.ValidateUserCredentials(username, normalPin)
 	if err != nil || pinType != 1 {
-		return errors.New("invalid credentials")
+		return ErrInvalidCredentials
 	}
 	return repositories.DeleteDuress(username)
 }
 
-func GetDuressMap(username string) (map[string]interface{}, error) {
+func GetDuressMap(username string) (map[string]any, error) {
 	return repositories.GetDuressMap(username)
 }
 
@@ -66,10 +65,10 @@ func GetFollowingDuress(username string) ([]repositories.Duress, error) {
 func VerifyDuressPin(username, pin string) error {
 	pinType, err := repositories.ValidateUserCredentials(username, pin)
 	if err != nil {
-		return errors.New("invalid credentials")
+		return ErrInvalidCredentials
 	}
 	if pinType != 2 {
-		return errors.New("invalid duress pin")
+		return ErrInvalidDuressPin
 	}
 	return nil
 }

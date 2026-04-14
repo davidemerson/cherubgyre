@@ -33,9 +33,6 @@ func main() {
 	services.SetJWTSecret(cfg.JWTSecret)
 	controllers.SetAdminToken(cfg.AdminToken)
 
-	if err := services.MigratePinHashes(); err != nil {
-		log.Printf("PIN hash migration error: %v", err)
-	}
 	if err := services.BackfillUIDs(); err != nil {
 		log.Printf("UID backfill error: %v", err)
 	}

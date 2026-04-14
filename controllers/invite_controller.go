@@ -3,6 +3,7 @@ package controllers
 import (
 	"cherubgyre/services"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 )
@@ -11,7 +12,7 @@ func Invite(w http.ResponseWriter, r *http.Request) {
 	p := Identity(r)
 
 	if p.IsDuress {
-		response := map[string]interface{}{
+		response := map[string]any{
 			"message":    "Invite code created successfully",
 			"inviteCode": services.GetDummyInviteCode(),
 		}
@@ -22,7 +23,7 @@ func Invite(w http.ResponseWriter, r *http.Request) {
 	inviteCode, err := services.CreateInvite(p.Username)
 	if err != nil {
 		log.Printf("Error creating invite: %v", err)
-		if err.Error() == "rate limit exceeded" {
+		if errors.Is(err, services.ErrRateLimitExceeded) {
 			http.Error(w, err.Error(), http.StatusTooManyRequests)
 			return
 		}
@@ -30,7 +31,7 @@ func Invite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message":    "Invite code created successfully",
 		"inviteCode": inviteCode,
 	}
