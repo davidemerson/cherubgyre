@@ -81,10 +81,13 @@ jobs:
       - uses: securego/gosec@master
         with:
           # G104 (unhandled errors) is covered by golangci-lint's errcheck
-          # with finer granularity. Excluding here avoids duplicate noise
-          # on intentional cleanup-path discards (tmp.Close, os.Remove
-          # inside error branches).
-          args: -exclude=G104 -exclude-dir=test ./...
+          # with finer granularity. G706 (log injection via taint) is
+          # mitigated at runtime by controllers.sanitizeForLog, which
+          # strips control characters before log.Printf — gosec's taint
+          # analyzer can't model that sanitization so it keeps flagging
+          # the call sites. Exclude here; the actual mitigation is in
+          # source.
+          args: -exclude=G104,G706 -exclude-dir=test ./...
 
   integration:
     name: Integration Tests

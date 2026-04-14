@@ -20,10 +20,9 @@ linters:
     gosec:
       excludes:
         - G104 # unhandled errors — covered by errcheck with finer granularity
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
