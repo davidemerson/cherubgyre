@@ -13,6 +13,9 @@ The design is documented at
 This repository is a Go HTTP service that implements the backend API
 described there.
 
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for a living list of what's
+shipping, what's deferred, and where the project is headed next.
+
 ## What the backend does
 
 - **Invite-only registration** with single-use invite codes minted by
