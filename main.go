@@ -3,6 +3,7 @@ package main
 import (
 	"cherubgyre/config"
 	"cherubgyre/controllers"
+	"cherubgyre/repositories"
 	"cherubgyre/services"
 	"context"
 	"errors"
@@ -43,6 +44,15 @@ func main() {
 
 	services.SetJWTSecret(cfg.JWTSecret)
 	controllers.SetAdminToken(cfg.AdminToken)
+
+	// Optional: MASTER_INVITE_CODE overrides the hardcoded default.
+	// If unset, keep the built-in value for backwards compatibility
+	// with existing test fixtures and bootstrap docs. Operators who
+	// want to close the bootstrap path after launch can set the env
+	// var to the empty string (the config loader falls through).
+	if cfg.MasterInviteCode != "" {
+		repositories.SetMasterInviteCode(cfg.MasterInviteCode)
+	}
 
 	if err := services.BackfillUIDs(); err != nil {
 		slog.Error("UID backfill failed", slog.Any("err", err))

@@ -133,9 +133,11 @@ git config core.hooksPath .githooks
 | `JWT_SECRET`                | **yes**  | —       | HS256 signing key for session tokens. Must be **at least 32 bytes**. Server refuses to start otherwise. |
 | `ADMIN_TOKEN`               | **yes**  | —       | Shared secret required as the `X-Admin-Token` header on `/admin/*`. Must be at least 16 bytes.|
 | `PORT`                      | no       | `8080`  | TCP port to bind.                                                                              |
+| `LOG_LEVEL`                 | no       | `info`  | `debug` / `info` / `warn` / `error`. Structured JSON logs are always enabled.                  |
 | `LOGIN_RATE_LIMIT`          | no       | `10`    | Max `/login` attempts per client IP within the window.                                         |
 | `LOGIN_RATE_WINDOW_SECONDS` | no       | `300`   | Sliding window length for login rate limiting, in seconds.                                     |
 | `RUN_INACTIVITY_JOB`        | no       | `true`  | Set to `false` to disable the background inactivity sweep. Useful on multi-replica deployments where only one process should run it. |
+| `MASTER_INVITE_CODE`        | no       | built-in | Overrides the built-in bootstrap invite code. Set to a fresh UUID to rotate the bootstrap credential without recompiling. |
 
 ## Registering your first user
 

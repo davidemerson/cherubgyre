@@ -20,11 +20,30 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// MasterInviteCode is the unlimited-use bootstrap invite. Kept public so
-// services and tests can reference it without stringly-typed duplication.
-// Should be overridden via a config option in a future pass so it isn't
-// compiled into the binary.
-const MasterInviteCode = "4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2"
+// MasterInviteCode is the unlimited-use bootstrap invite. Defaults to a
+// well-known value for backwards compatibility with existing test
+// fixtures, but can be overridden at startup via SetMasterInviteCode
+// (wired from config.MasterInviteCode in main.go).
+//
+// Deployments that have bootstrapped past the first user should set
+// MASTER_INVITE_CODE to an empty string (or any value they never intend
+// to honor). When it is empty, the "is this the master code?" check
+// short-circuits to false for every input, effectively disabling the
+// master-code path entirely.
+var MasterInviteCode = "4f88690e-0fbc-47b9-88e3-2d5ee2ac03d2"
+
+// SetMasterInviteCode installs the master-code value from config. Calling
+// with "" disables the master-code path. Called from main() at startup.
+func SetMasterInviteCode(code string) {
+	MasterInviteCode = code
+}
+
+// isMaster returns true when the supplied code is non-empty and matches
+// the configured master code. An empty MasterInviteCode disables
+// matching entirely.
+func isMaster(code string) bool {
+	return MasterInviteCode != "" && code == MasterInviteCode
+}
 
 var (
 	userStore       = newFileStore("users.json")
@@ -70,7 +89,7 @@ func SaveUser(registerDTO dtos.RegisterDTO) error {
 	}
 
 	if registerDTO.InviteCode != "" {
-		isMasterCode := registerDTO.InviteCode == MasterInviteCode
+		isMasterCode := isMaster(registerDTO.InviteCode)
 		validCode := isMasterCode
 		if !validCode {
 			for _, u := range users {
@@ -192,7 +211,7 @@ func IsUsernameTaken(username string) (bool, error) {
 // master bootstrap code or is present in some user's UserInviteCode field
 // AND has not yet been consumed.
 func ValidateInviteCode(inviteCode string) (bool, error) {
-	if inviteCode == MasterInviteCode {
+	if isMaster(inviteCode) {
 		return true, nil
 	}
 

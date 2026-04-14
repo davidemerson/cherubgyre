@@ -8,10 +8,11 @@ import (
 )
 
 type Config struct {
-	JWTSecret  []byte
-	AdminToken string
-	Port       string
-	LogLevel   slog.Level
+	JWTSecret        []byte
+	AdminToken       string
+	Port             string
+	LogLevel         slog.Level
+	MasterInviteCode string
 }
 
 // Load reads required configuration from environment variables.
@@ -40,10 +41,11 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		JWTSecret:  []byte(secret),
-		AdminToken: adminToken,
-		Port:       port,
-		LogLevel:   parseLogLevel(os.Getenv("LOG_LEVEL")),
+		JWTSecret:        []byte(secret),
+		AdminToken:       adminToken,
+		Port:             port,
+		LogLevel:         parseLogLevel(os.Getenv("LOG_LEVEL")),
+		MasterInviteCode: os.Getenv("MASTER_INVITE_CODE"),
 	}, nil
 }
 
