@@ -43,7 +43,7 @@ func (s *fileStore) loadLocked(out interface{}) error {
 		}
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil {
@@ -62,16 +62,13 @@ func (s *fileStore) loadLocked(out interface{}) error {
 	return nil
 }
 
-// save serializes in to JSON and atomically replaces the target file.
-// The write goes to a sibling temp file which is then os.Rename'd over
-// the target — on POSIX this is atomic, so readers either see the old
-// contents or the new contents, never a half-written file.
-func (s *fileStore) save(in interface{}) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.saveLocked(in)
-}
-
+// saveLocked serializes in to JSON and atomically replaces the target
+// file. The write goes to a sibling temp file which is then os.Rename'd
+// over the target — on POSIX this is atomic, so readers either see the
+// old contents or the new contents, never a half-written file. Errors
+// during cleanup are intentionally dropped: we already have a primary
+// error to return, and logging a second error would only confuse the
+// caller.
 func (s *fileStore) saveLocked(in interface{}) error {
 	dir := filepath.Dir(s.path)
 	if dir == "" {
@@ -84,40 +81,22 @@ func (s *fileStore) saveLocked(in interface{}) error {
 	tmpName := tmp.Name()
 	enc := json.NewEncoder(tmp)
 	if err := enc.Encode(in); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Rename(tmpName, s.path); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	return nil
-}
-
-// mutate atomically runs fn under the write lock, letting the caller
-// load-mutate-save without dropping the lock in between. fn receives a
-// fresh decode of the current file contents (or an empty value if the
-// file doesn't exist yet), mutates it, and returns the value to persist.
-// If fn returns an error, no write happens.
-func (s *fileStore) mutate(initial interface{}, fn func() (interface{}, error)) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.loadLocked(initial); err != nil {
-		return err
-	}
-	out, err := fn()
-	if err != nil {
-		return err
-	}
-	return s.saveLocked(out)
 }

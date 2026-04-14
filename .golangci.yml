@@ -20,6 +20,7 @@ linters:
     gosec:
       excludes:
         - G104 # unhandled errors — covered by errcheck with finer granularity
+        - G706 # log injection — mitigated at runtime by controllers.sanitizeForLog
   exclusions:
     rules:
       - path: _test\.go

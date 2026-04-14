@@ -138,7 +138,9 @@ func CheckInactivity() error {
 
 		if time.Since(user.LastActive) > expirationDuration {
 			log.Printf("User %s is inactive (Last active: %v). Deregistering...", user.Username, user.LastActive)
-			DeregisterUser(user.Username, "Inactivity")
+			if err := DeregisterUser(user.Username, "Inactivity"); err != nil {
+				log.Printf("Failed to deregister inactive user %s: %v", user.Username, err)
+			}
 		}
 	}
 	

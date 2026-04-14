@@ -6,5 +6,5 @@ import (
 
 func Health(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("The server is in good health"))
+	_, _ = w.Write([]byte("The server is in good health"))
 }
