@@ -1,9 +1,11 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
     - govet
@@ -11,23 +13,15 @@ linters:
     - staticcheck
     - unused
     - gosec
-    - gocritic
-    - gosimple
     - misspell
     - unconvert
     - unparam
-
-linters-settings:
-  gosec:
-    excludes:
-      - G104 # Audited: explicit error handling in hot paths
-  gocritic:
-    disabled-checks:
-      - ifElseChain
+  settings:
+    gosec:
+      excludes:
+        - G104 # unhandled errors — covered by errcheck with finer granularity
 
 issues:
-  exclude-dirs:
-    - test
   exclude-rules:
     - path: _test\.go
       linters:

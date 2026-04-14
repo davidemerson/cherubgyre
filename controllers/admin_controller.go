@@ -48,7 +48,7 @@ func AdminDeregisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Admin Request: Deregister user %s", username)
+	log.Printf("Admin Request: Deregister user %s", sanitizeForLog(username))
 
 	err := services.DeregisterUser(username, "Admin Manual Deregistration")
 	if err != nil {

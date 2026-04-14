@@ -40,7 +40,16 @@ type DummyFollower struct {
 
 func seedRand(seed string) *rand.Rand {
 	h := sha256.Sum256([]byte("cherubgyre/dummydata:" + seed))
+	// #nosec G115 -- The uint64→int64 cast is intentional: we want a
+	// deterministic seed derived from the hash, and sign is irrelevant
+	// because math/rand.NewSource accepts any int64.
 	s := int64(binary.BigEndian.Uint64(h[:8]))
+	// #nosec G404 -- Deterministic pseudo-randomness is the whole point
+	// of this package. The output is *not* used for security decisions;
+	// it's cosmetic dummy data shown to a coercer in duress mode, and
+	// must be stable per real user (same input → same output) so the
+	// coercer cannot spot duress mode by refreshing the UI. crypto/rand
+	// cannot produce seeded output.
 	return rand.New(rand.NewSource(s))
 }
 
@@ -55,6 +64,7 @@ func fakeUsername(r *rand.Rand) string {
 	}
 	b[3] = '_'
 	for i := 4; i < 7; i++ {
+		// #nosec G115 -- Intn(10) is always 0..9, fits in a byte.
 		b[i] = byte('0' + r.Intn(10))
 	}
 	return string(b)

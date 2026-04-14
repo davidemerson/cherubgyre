@@ -137,7 +137,7 @@ func DismissDuressNotification(w http.ResponseWriter, r *http.Request) {
 	target := vars["username"]
 
 	if err := services.UnfollowUser(p.Username, target); err != nil {
-		log.Printf("Error dismissing notification (unfollowing %s): %v", target, err)
+		log.Printf("Error dismissing notification (unfollowing %s): %v", sanitizeForLog(target), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

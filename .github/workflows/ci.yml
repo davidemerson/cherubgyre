@@ -10,7 +10,9 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.25"
+  # "stable" always resolves to the latest patched Go release so
+  # govulncheck stays clean as new stdlib CVEs are fixed upstream.
+  GO_VERSION: "stable"
 
 jobs:
   build:

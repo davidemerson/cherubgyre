@@ -88,6 +88,18 @@ func main() {
 		}()
 	}
 
+	// Wrap the listener in an explicit http.Server with sane timeouts
+	// so a slow or malicious client cannot tie up goroutines indefinitely
+	// by opening a connection and never sending headers.
+	srv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
 	log.Println("Starting server on :" + cfg.Port)
-	log.Fatal(http.ListenAndServe(":"+cfg.Port, router))
+	log.Fatal(srv.ListenAndServe())
 }

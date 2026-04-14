@@ -4,7 +4,25 @@ import (
 	"cherubgyre/services"
 	"context"
 	"net/http"
+	"strings"
 )
+
+// sanitizeForLog strips newlines and other control characters from a
+// caller-supplied string before it is written to a log line. Without
+// this, an attacker could put `\n` (URL-encoded as `%0A`) into a URL
+// path segment and inject forged log records.
+func sanitizeForLog(s string) string {
+	const maxLen = 128
+	if len(s) > maxLen {
+		s = s[:maxLen]
+	}
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
+}
 
 // authCtxKey is unexported so callers must go through the helpers to read
 // identity off a request context.
