@@ -1,6 +1,46 @@
+# Keep the docker build context lean. Anything listed here is
+# not copied into the builder, which speeds up the build and
+# avoids accidentally baking local state or secrets into the image.
+
+# Version control / CI
 .git
-node_modules
-dist
-vendor
-Dockerfile
+.github
+.githooks
+
+# Editor / tooling state
+.claude
+.vscode
+.idea
+.pytest_cache
+__pycache__
+*.pyc
+
+# Build artifacts (the image builds its own binary)
+main
+cherubgyre
+cherubgyre.exe
+*.exe
+coverage.out
+coverage.html
+
+# Local runtime state
+.env
+.env.local
+users.json
+followers.json
+duress.json
+used_invite_codes.json
+
+# Docs and non-code assets
+docs
+logos
 *.md
+
+# Lint / config files not needed at build time
+.golangci.yml
+.gitignore
+.dockerignore
+
+# The integration test harness lives outside the image; the
+# server it talks to is built separately in CI.
+test
