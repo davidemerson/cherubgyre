@@ -55,6 +55,7 @@ func main() {
 		_, _ = w.Write([]byte("You've reached cherubgyre"))
 	}).Methods("GET")
 	router.HandleFunc("/health", controllers.Health).Methods("GET")
+	router.HandleFunc("/ready", controllers.Ready).Methods("GET")
 
 	// Public mutating routes get the tighter body cap — these see
 	// unauthenticated traffic and are the biggest DoS surface.

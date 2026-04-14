@@ -3,6 +3,7 @@ package repositories
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,6 +22,37 @@ import (
 type fileStore struct {
 	mu   sync.RWMutex
 	path string
+}
+
+// HealthCheck writes a short probe file in the current working
+// directory (the same place the JSON stores live), syncs it, re-reads
+// it, and deletes it. Any failure returns an error so the caller can
+// convert it to an HTTP 503. Used by the /ready readiness endpoint
+// to tell a container orchestrator that the app has actually lost
+// disk access, not just that the process is still running.
+func HealthCheck() error {
+	dir := "."
+	f, err := os.CreateTemp(dir, ".health-probe-*")
+	if err != nil {
+		return fmt.Errorf("create probe: %w", err)
+	}
+	name := f.Name()
+	defer func() { _ = os.Remove(name) }()
+	if _, err := f.Write([]byte("ok")); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write probe: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("sync probe: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close probe: %w", err)
+	}
+	if _, err := os.ReadFile(name); err != nil {
+		return fmt.Errorf("read probe: %w", err)
+	}
+	return nil
 }
 
 func newFileStore(path string) *fileStore {
