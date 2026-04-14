@@ -15,7 +15,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o main main.go
 
 # Use Ubuntu 22.04 LTS as the base image for production
-FROM ubuntu:22.04 
+FROM ubuntu:24.04 
 
 # Set working directory
 WORKDIR /root/
