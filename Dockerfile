@@ -34,7 +34,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -ldflags="-s -w" -trimpath -o /out/cherubgyre ./
 
 # ---------- runtime ----------
-FROM alpine:3.22
+FROM alpine:3.23
 
 # ca-certificates so outbound HTTPS (e.g. to the Dicebear avatar
 # service) works. tini is used as PID 1 so SIGTERM from `docker stop`
