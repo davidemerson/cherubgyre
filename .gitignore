@@ -19,3 +19,4 @@ __pycache__/
 
 # Editor / tooling state
 .claude/
+.DS_Store
